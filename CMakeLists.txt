@@ -199,7 +199,7 @@ target_sources(${LIB_TARGET} PUBLIC
 set_target_properties(${LIB_TARGET} PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY                ${LIB_OUTPUT_DIR}
     ARCHIVE_OUTPUT_DIRECTORY                ${LIB_OUTPUT_DIR}
-    
+
     RUNTIME_OUTPUT_DIRECTORY_DEBUG          ${LIB_OUTPUT_DIR}
     RUNTIME_OUTPUT_DIRECTORY_RELEASE        ${LIB_OUTPUT_DIR}
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${LIB_OUTPUT_DIR}
@@ -245,7 +245,7 @@ if (BUILD_TESTING)
     endif()
 
     if (NOT TARGET Catch2::Catch2WithMain)
-        message(FATAL_ERROR "Catch2 could not be located or fetched, but testing has been explicitly requested.")        
+        message(FATAL_ERROR "Catch2 could not be located or fetched, but testing has been explicitly requested.")
     endif()
 
     add_executable(unit_tests "test/test.cpp")
@@ -282,7 +282,7 @@ if (Doxygen_FOUND)
     set(DOXYGEN_PDF_HYPERLINKS YES)
 
     set(DOXYGEN_RECURSIVE YES)
-    
+
     # Graphviz
     set(DOXYGEN_HAVE_DOT YES)
     set(DOXYGEN_DOT_IMAGE_FORMAT svg)

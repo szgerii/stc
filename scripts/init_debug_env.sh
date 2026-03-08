@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 
-# run with source or '. scripts/init_debug_env.sh' to allow 
+# run with source or '. scripts/init_debug_env.sh' to allow
 # modification of the active environment's variables
 # usage: . scripts/init_debug_env.sh [--lsan <path>] [--valgrind <path>]
 
@@ -42,7 +42,7 @@ while [ $# -gt 0 ]; do
             return 1
             ;;
     esac
-    
+
     shift
 done
 

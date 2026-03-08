@@ -28,7 +28,7 @@ public:
 
     const TypeDescriptor& get_td(TypeId id) const;
 
-    template <TypeDescriptorTy T>
+    template <CTypeDescriptorTy T>
     bool is_type_of(TypeId id) const {
         auto* td = static_cast<TypeDescriptor*>(arena.get_ptr(id));
         assert(td != nullptr);

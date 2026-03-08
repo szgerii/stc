@@ -118,7 +118,7 @@ using TDVariantType =
     std::variant<VoidTD, BoolTD, IntTD, FloatTD, VectorTD, MatrixTD, ArrayTD, StructTD>;
 
 template <typename T>
-concept TypeDescriptorTy =
+concept CTypeDescriptorTy =
     std::is_same_v<T, VoidTD> || std::is_same_v<T, BoolTD> || std::is_same_v<T, IntTD> ||
     std::is_same_v<T, FloatTD> || std::is_same_v<T, VectorTD> || std::is_same_v<T, MatrixTD> ||
     std::is_same_v<T, ArrayTD> || std::is_same_v<T, StructTD>;
@@ -131,7 +131,7 @@ struct TypeDescriptor {
     TypeDescriptor& operator=(const TypeDescriptor&) = delete;
     TypeDescriptor& operator=(TypeDescriptor&&)      = default;
 
-    template <TypeDescriptorTy T>
+    template <CTypeDescriptorTy T>
     constexpr bool is() const {
         return std::holds_alternative<T>(type_data);
     }
@@ -143,7 +143,7 @@ struct TypeDescriptor {
     constexpr bool is_array() const { return is<ArrayTD>(); }
     constexpr bool is_custom() const { return is<StructTD>(); }
 
-    template <TypeDescriptorTy T>
+    template <CTypeDescriptorTy T>
     constexpr const T& as() const {
         return std::get<T>(type_data);
     }
@@ -244,6 +244,6 @@ struct std::hash<stc::ir::StructTD> {
     }
 };
 
-static_assert(stc::UnorderedMapKey<stc::ir::TDVariantType>);
+static_assert(stc::CIsUnorderedMapKey<stc::ir::TDVariantType>);
 
 #undef STD_HASH_SPEC

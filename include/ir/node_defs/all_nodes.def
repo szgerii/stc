@@ -1,0 +1,23 @@
+// All nodes, including expressions, statements and declarations
+
+#include "common/x_macros/begin_def.inc"
+
+#if defined(STC_X_NO_FIRST) || defined(STC_X_NO_LAST)
+    #error "Multi-level aggregation is not currently supported by the X-Macro system"
+#endif
+
+#define STC_X_NO_LAST
+#include "ir/node_defs/expr.def"
+#undef STC_X_NO_LAST
+
+#define STC_X_NO_LAST
+#define STC_X_NO_FIRST
+#include "ir/node_defs/stmt.def"
+#undef STC_X_NO_FIRST
+#undef STC_X_NO_LAST
+
+#define STC_X_NO_FIRST
+#include "ir/node_defs/decl.def"
+#undef STC_X_NO_FIRST
+
+#include "common/x_macros/end_def.inc"

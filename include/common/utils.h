@@ -73,7 +73,7 @@ std::unique_ptr<To> static_unique_cast(std::unique_ptr<From>&& ptr) {
 // same as boost's current hash_combine implementation for 64-bit size_t:
 // https://www.boost.org/doc/libs/latest/libs/container_hash/doc/html/hash.html#notes_hash_combine
 template <typename T>
-// requires Hashable<T>
+// requires CHashable<T>
 inline size_t hash_combine(size_t seed, const T& v) {
     size_t x = seed + 0x9e3779b9 + std::hash<T>{}(v);
     x ^= x >> 32;

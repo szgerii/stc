@@ -1,17 +1,9 @@
-// All statements, including expressions. For non-expression statements only, use plain_stmt.def
+// Statements that are not expressions
 
 #include "common/x_macros/begin_def.inc"
 
-#if defined(STC_X_NO_FIRST) || defined(STC_X_NO_LAST)
-    #error "Multi-level aggregation is not currently supported by the X-Macro system"
-#endif
-
-#define STC_X_NO_LAST
-#include "ir/node_defs/expr.def"
-#undef STC_X_NO_LAST
-
-#define STC_X_NO_FIRST
-#include "ir/node_defs/plain_stmt.def"
-#undef STC_X_NO_FIRST
+STC_X_FIRST(CompoundStmt, Compound)
+STC_X(IfStmt, If)
+STC_X_LAST(ReturnStmt, Return)
 
 #include "common/x_macros/end_def.inc"

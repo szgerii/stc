@@ -7,24 +7,26 @@ namespace stc::ir {
 
 #define STC_AST_VISITOR_DECL(RetTy, type) RetTy visit_##type(type&);
 
+// clang-format off
 template <typename ImplTy, typename RetTy>
-concept ASTVisitorImpl = requires (ImplTy v) {
+concept CIsASTVisitorImpl = requires (ImplTy v) {
 
-#define X(type, kind) {v.visit_##type(std::declval<type&>())}->std::same_as<RetTy>;
-#include "ir/node_defs/decl.def"
-#include "ir/node_defs/stmt.def"
-#undef X
+    #define X(type, kind) { v.visit_##type(std::declval<type&>()) } -> std::same_as<RetTy>;
+        #include "ir/node_defs/all_nodes.def"
+    #undef X
+
 };
+// clang-format on
 
 // CRTP-style base AST visitor class
 // derived visitors need to implement a visit_T function for every Stmt and Decl in the AST
-// ir/node_defs/decl.def and ir/node_defs/stmt.def can be used with the X-macro system to
-// automatically generate declarations for these, as seen below
-// declarations in the base class have been commented out, as both cases lead to the same kind of
-// linker error, when not implemented properly (these errors contain the exact member functions
-// that are missing)
-// when declarations aren't generated automatically, a static_assert on the ASTVisitorImpl concept
-// can be used to turn linker errors into compile-time concept-based errors (with automatic
+// ir/node_defs/all_nodes.def can be used with the X-macro system to automatically generate
+// declarations for these, as seen below
+// visitor declarations in the base class have been commented out, as both cases lead to the
+// same kind of linker error, when not implemented properly (these errors contain the exact member
+// functions that are missing)
+// when declarations aren't generated automatically, a static_assert on the CIsASTVisitorImpl
+// concept can be used to turn linker errors into compile-time concept-based errors (with automatic
 // declarations, this will pass and errors will only be generated at link-time)
 template <typename ImplTy, typename RetTy = void>
 class ASTVisitor {
@@ -44,54 +46,28 @@ private:
     }
 
 public:
-    RetTy visit(StmtId id) {
-        impl_this()->pre_visit_stmt(id);
+    RetTy visit(NodeId id) {
+        impl_this()->pre_visit(id);
 
-        Stmt* stmt = ctx.get_stmt(id);
-        return dispatch_stmt(stmt);
+        NodeBase* node = ctx.get_node(id);
+        return dispatch(node);
     }
 
-    RetTy visit(DeclId id) {
-        impl_this()->pre_visit_decl(id);
-
-        Decl* decl = ctx.get_decl(id);
-        return dispatch_decl(decl);
-    }
-
-    RetTy dispatch_stmt(Stmt* stmt) {
-        if (stmt == nullptr)
+    RetTy dispatch(NodeBase* node) {
+        if (node == nullptr)
             return impl_this()->visit_default_case();
 
         // clang-format off
-        switch (stmt->get_kind()) {
+        switch (node->kind()) {
             #define X(type, kind)                                                                  \
-                case (Stmt::NodeKind::kind):                                                       \
-                    return impl_this()->visit_##type(as<type>(stmt));
+                case (NodeKind::kind):                                                             \
+                    return impl_this()->visit_##type(as<type>(node));
 
-                #include "ir/node_defs/stmt.def"
+                #include "ir/node_defs/all_nodes.def"
             #undef X
 
             default:
-                throw std::logic_error{"Missing Stmt case in ASTVisitor"};
-        }
-        // clang-format on
-    }
-
-    RetTy dispatch_decl(Decl* decl) {
-        if (decl == nullptr)
-            return impl_this()->visit_default_case();
-
-        // clang-format off
-        switch (decl->get_kind()) {
-            #define X(type, kind)                                                                  \
-                case (Decl::DeclKind::kind):                                                       \
-                    return impl_this()->visit_##type(as<type>(decl));
-
-                #include "ir/node_defs/decl.def"
-            #undef X
-
-            default:
-                throw std::logic_error{"Missing Decl case in ASTVisitor"};
+                throw std::logic_error{"Missing NodeKind case in ASTVisitor"};
         }
         // clang-format on
     }
@@ -104,12 +80,10 @@ public:
         }
     }
 
-    void pre_visit_stmt(StmtId) {}
-    void pre_visit_decl(DeclId) {}
+    void pre_visit(NodeId) {}
 
     // #define X(type, kind) STC_AST_VISITOR_DECL(RetTy, type)
-    //     #include "ir/node_defs/decl.def"
-    //     #include "ir/node_defs/stmt.def"
+    //     #include "ir/node_defs/all_nodes.def"
     // #undef X
 };
 

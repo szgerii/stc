@@ -1,5 +1,3 @@
-// Subset of all statements defined by stmt.def
-
 #include "common/x_macros/begin_def.inc"
 
 STC_X_FIRST(BoolLiteral, BoolLit)

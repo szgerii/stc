@@ -292,6 +292,6 @@ template <typename SizeTy>
 struct is_bump_arena<BumpArena<SizeTy>> : std::true_type {};
 
 template <typename T>
-concept IsBumpArena = is_bump_arena<T>::value;
+concept CIsBumpArena = is_bump_arena<T>::value;
 
 }; // namespace stc

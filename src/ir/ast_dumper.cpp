@@ -55,14 +55,9 @@ void ASTDumper::dec_indent(size_t level) {
     indent_level -= level;
 }
 
-void ASTDumper::pre_visit_stmt(StmtId stmt) {
-    out << indent() << '[' << std::format("{:p}", static_cast<void*>(ctx.get_stmt(stmt))) << "|"
-        << stmt << "]\n";
-}
-
-void ASTDumper::pre_visit_decl(DeclId decl) {
-    out << indent() << '[' << std::format("{:p}", static_cast<void*>(ctx.get_decl(decl))) << "|"
-        << decl << "]\n";
+void ASTDumper::pre_visit(NodeId node_id) {
+    out << indent() << '[' << std::format("{:p}", static_cast<void*>(ctx.get_node(node_id))) << "|"
+        << node_id << "]\n";
 }
 
 void ASTDumper::visit_VarDecl(VarDecl& var_decl) {
@@ -83,7 +78,7 @@ void ASTDumper::visit_FunctionDecl(FunctionDecl& fn_decl) {
         << type_str(fn_decl.return_type) << '\n';
 
     inc_indent();
-    for (DeclId param : fn_decl.param_decls) {
+    for (NodeId param : fn_decl.param_decls) {
         visit(param);
     }
     dec_indent();
@@ -98,7 +93,7 @@ void ASTDumper::visit_StructDecl(StructDecl& struct_decl) {
     out << indent() << "StructDecl: " << struct_decl.identifier << '\n';
 
     inc_indent();
-    for (DeclId decl : struct_decl.field_decls)
+    for (NodeId decl : struct_decl.field_decls)
         visit(decl);
     dec_indent();
 }
@@ -125,7 +120,7 @@ void ASTDumper::visit_VectorLiteral(VectorLiteral& vec_lit) {
     out << indent() << "VectorLiteral (" << type_str(vec_lit.type()) << "):\n";
 
     inc_indent();
-    for (StmtId component_stmt : vec_lit.components)
+    for (NodeId component_stmt : vec_lit.components)
         visit(component_stmt);
     dec_indent();
 }
@@ -152,7 +147,7 @@ void ASTDumper::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
     out << indent() << "ArrayLiteral (" << type_str(arr_lit.type()) << "):\n";
 
     inc_indent();
-    for (StmtId elem : arr_lit.elements)
+    for (NodeId elem : arr_lit.elements)
         visit(elem);
     dec_indent();
 }
@@ -195,7 +190,12 @@ void ASTDumper::visit_ExplicitCast(ExplicitCast& expl_cast) {
 }
 
 void ASTDumper::visit_DeclRefExpr(DeclRefExpr& decl_ref) {
-    out << indent() << "DeclRefExpr to '" << ctx.get_decl(decl_ref.decl)->identifier << "'\n";
+    NodeBase* node = ctx.get_node(decl_ref.decl);
+
+    Decl* decl = dyn_cast<Decl>(node);
+    assert(decl != nullptr && "decl ref expr points to nullptr, or a non-decl node");
+
+    out << indent() << "DeclRefExpr to '" << decl->identifier << "'\n";
 }
 
 void ASTDumper::visit_CompoundStmt(CompoundStmt& cmpd_stmt) {
@@ -207,7 +207,7 @@ void ASTDumper::visit_CompoundStmt(CompoundStmt& cmpd_stmt) {
         out << '\n';
 
         inc_indent();
-        for (StmtId stmt : cmpd_stmt.body)
+        for (NodeId stmt : cmpd_stmt.body)
             visit(stmt);
         dec_indent();
     }

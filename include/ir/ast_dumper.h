@@ -15,13 +15,11 @@ public:
     explicit ASTDumper(ASTCtx& ctx, std::ostream& out)
         : ASTVisitor{ctx}, out{out} {}
 
-    void pre_visit_stmt(StmtId stmt);
-    void pre_visit_decl(DeclId decl);
+    void pre_visit(NodeId node);
 
     // clang-format off
     #define X(type, kind) STC_AST_VISITOR_DECL(void, type)
-        #include "ir/node_defs/decl.def"
-        #include "ir/node_defs/stmt.def"
+        #include "ir/node_defs/all_nodes.def"
     #undef X
     // clang-format on
 
@@ -32,6 +30,6 @@ private:
     void dec_indent(size_t level = STC_DUMP_INDENT);
 };
 
-static_assert(ASTVisitorImpl<ASTDumper, void>);
+static_assert(CIsASTVisitorImpl<ASTDumper, void>);
 
 } // namespace stc::ir

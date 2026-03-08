@@ -1,9 +1,0 @@
-// Statements that are not expressions, for full list of statements use stmt.def
-
-#include "common/x_macros/begin_def.inc"
-
-STC_X_FIRST(CompoundStmt, Compound)
-STC_X(IfStmt, If)
-STC_X_LAST(ReturnStmt, Return)
-
-#include "common/x_macros/end_def.inc"
