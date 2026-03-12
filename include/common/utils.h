@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <format>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -16,12 +17,14 @@ namespace stc {
 
 // CLEANUP: better structure for utils, concepts, etc.
 
+using namespace std::literals;
+
 namespace detail {
 
 template <typename F, typename T>
 using unqual_return_t = std::remove_cvref_t<std::invoke_result_t<F, T>>;
 
-}
+} // namespace detail
 
 template <typename T>
 concept CHashable = requires (T a) {
@@ -37,9 +40,16 @@ inline std::string indent(size_t level, size_t unit_width) {
     return STC_USE_TABS ? std::string(level, '\t') : std::string(level * unit_width, ' ');
 }
 
-std::nullptr_t report(std::string_view msg, bool is_warning, std::ostream& out = std::cerr);
+std::nullptr_t report(std::string_view msg, std::string_view prefix = ""sv,
+                      std::ostream& out = std::cerr);
+
 std::nullptr_t error(std::string_view msg, std::ostream& out = std::cerr);
 std::nullptr_t warning(std::string_view msg, std::ostream& out = std::cerr);
+std::nullptr_t internal_error(std::string_view msg, std::ostream& out = std::cerr);
+
+inline std::string dump_label(const std::string& label_str) {
+    return std::format("({}):\n", label_str);
+}
 
 template <typename T, typename Projection = std::identity>
 requires std::regular_invocable<Projection&, const T&> && requires {
@@ -142,5 +152,8 @@ concept CStrongId =
 
 template <typename... Ts>
 inline constexpr bool dependent_false_v = false;
+
+template <typename T, typename V>
+concept CEnumOf = std::is_enum_v<T> && std::same_as<std::underlying_type_t<T>, V>;
 
 } // namespace stc

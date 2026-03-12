@@ -1,6 +1,6 @@
 #include <format>
 
-#include "sir/sir_dumper.h"
+#include "sir/dumper.h"
 #include "types/type_descriptors.h"
 
 namespace {
@@ -31,10 +31,6 @@ std::string op_str(OpKind op) {
     throw std::logic_error{"Unaccounted binary operator kind"};
 }
 
-inline std::string label(const std::string& label_str) {
-    return std::format("({}):\n", label_str);
-}
-
 } // namespace
 
 namespace stc::sir {
@@ -55,7 +51,7 @@ void SIRDumper::dec_indent(size_t level) {
     indent_level -= level;
 }
 
-void SIRDumper::pre_visit(NodeId node_id) {
+void SIRDumper::pre_visit_id(NodeId node_id) {
     out << indent() << '[' << std::format("{:p}", static_cast<void*>(ctx.get_node(node_id))) << "|"
         << node_id << "]\n";
 }
@@ -65,7 +61,7 @@ void SIRDumper::visit_VarDecl(VarDecl& var_decl) {
         << '\n';
 
     if (!var_decl.initializer.is_null()) {
-        out << indent() << label("initializer");
+        out << indent() << dump_label("initializer");
 
         inc_indent();
         visit(var_decl.initializer);
@@ -133,7 +129,7 @@ void SIRDumper::visit_MatrixLiteral(MatrixLiteral& mat_lit) {
            "invalid number of elements in matrix literal");
 
     for (size_t col_idx = 0; col_idx < cols; col_idx++) {
-        out << indent() << label(std::format("column #{}", col_idx + 1));
+        out << indent() << dump_label(std::format("column #{}", col_idx + 1));
 
         inc_indent();
         for (size_t row_idx = 0; row_idx < rows; row_idx++) {
@@ -162,7 +158,7 @@ void SIRDumper::visit_StructInstantiationLiteral(StructInstantiationLiteral& si_
     size_t f_idx = 0;
     for (NodeId f_value : si_lit.field_values) {
         out << indent()
-            << label(std::format("field #{} <=> '{}'", f_idx + 1, s_data->fields[f_idx].name));
+            << dump_label(std::format("field #{} <=> '{}'", f_idx + 1, s_data->fields[f_idx].name));
 
         inc_indent();
         visit(f_value);
@@ -183,12 +179,12 @@ void SIRDumper::visit_ScopedExpr(ScopedExpr& scoped_expr) {
 void SIRDumper::visit_BinaryOp(BinaryOp& bin_op) {
     out << indent() << "BinaryOp (" << op_str(bin_op.op()) << "):\n";
 
-    out << indent() << label("lhs");
+    out << indent() << dump_label("lhs");
     inc_indent();
     visit(bin_op.lhs);
     dec_indent();
 
-    out << indent() << label("rhs");
+    out << indent() << dump_label("rhs");
     inc_indent();
     visit(bin_op.rhs);
     dec_indent();
@@ -199,6 +195,15 @@ void SIRDumper::visit_ExplicitCast(ExplicitCast& expl_cast) {
 
     inc_indent();
     visit(expl_cast.inner);
+    dec_indent();
+}
+
+void SIRDumper::visit_FunctionCall(FunctionCall& fn_call) {
+    out << indent() << "FunctionCall: '" << fn_call.fn_name << "'\n";
+
+    inc_indent();
+    for (NodeId arg : fn_call.args)
+        visit(arg);
     dec_indent();
 }
 
@@ -235,17 +240,17 @@ void SIRDumper::visit_CompoundStmt(CompoundStmt& cmpd_stmt) {
 
 void SIRDumper::visit_IfStmt(IfStmt& if_stmt) {
     out << indent() << "IfStmt:\n";
-    out << indent() << label("condition");
+    out << indent() << dump_label("condition");
     inc_indent();
     visit(if_stmt.condition_expr);
     dec_indent();
 
-    out << indent() << label("true branch");
+    out << indent() << dump_label("true branch");
     inc_indent();
     visit(if_stmt.true_block);
     dec_indent();
 
-    out << indent() << label("false branch");
+    out << indent() << dump_label("false branch");
     inc_indent();
     visit(if_stmt.false_block);
     dec_indent();
@@ -255,8 +260,16 @@ void SIRDumper::visit_ReturnStmt(ReturnStmt& return_stmt) {
     out << indent() << "ReturnStmt:\n";
 
     inc_indent();
-    visit(return_stmt.ret_value_expr);
+    visit(return_stmt.inner);
     dec_indent();
+}
+
+void SIRDumper::visit_ContinueStmt([[maybe_unused]] ContinueStmt& continue_stmt) {
+    out << indent() << "ContinueStmt\n";
+}
+
+void SIRDumper::visit_BreakStmt([[maybe_unused]] BreakStmt& break_stmt) {
+    out << indent() << "BreakStmt\n";
 }
 
 } // namespace stc::sir

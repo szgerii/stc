@@ -2,26 +2,35 @@
 
 #include "common/src_info.h"
 
+namespace {
+using stc::SrcFile, stc::SrcLocation;
+
+void print_locinfo(const SrcFile& file, SrcLocation location, std::ostream& out) {
+    out << '[' << file.path << ':' << location.line << ':' << location.col << "] ";
+}
+
+} // namespace
+
 namespace stc {
 
 std::nullptr_t report(const SrcFile& file, SrcLocation location, std::string_view msg,
-                      bool is_warning, std::ostream& out) {
-
-    out << '[' << file.path << ':' << location.line << ':' << location.col << "] ";
-
+                      std::string_view prefix, std::ostream& out) {
     // FEATURE: print code snippet
 
-    return report(msg, is_warning, out);
+    print_locinfo(file, location, out);
+    return report(msg, prefix, out);
 }
 
 std::nullptr_t error(const SrcFile& file, SrcLocation location, std::string_view msg,
                      std::ostream& out) {
-    return report(file, location, msg, false, out);
+    print_locinfo(file, location, out);
+    return error(msg, out);
 }
 
 std::nullptr_t warning(const SrcFile& file, SrcLocation location, std::string_view msg,
                        std::ostream& out) {
-    return report(file, location, msg, true, out);
+    print_locinfo(file, location, out);
+    return warning(msg, out);
 }
 
 SrcInfoManager::SrcInfoManager(ArenaTy& arena, size_t initial_file_capacity)

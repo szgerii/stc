@@ -120,13 +120,15 @@ struct StructTD {
     bool operator==(const StructTD& other) const;
 };
 
-enum class EmptyBuiltinKind : uint8_t {};
-
-template <typename T>
-concept CBuiltinKind = CHashable<T> && CEqualityComparable<T>;
-
 struct BuiltinTD {
     const uint8_t kind;
+
+    constexpr explicit BuiltinTD(uint8_t kind)
+        : kind{kind} {}
+
+    template <CEnumOf<uint8_t> T>
+    constexpr explicit BuiltinTD(T kind)
+        : kind{static_cast<uint8_t>(kind)} {}
 
     bool operator==(const BuiltinTD& other) const { return kind == other.kind; }
 };

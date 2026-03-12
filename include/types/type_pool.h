@@ -29,9 +29,8 @@ public:
     explicit TypePool(ArenaTy& arena, std::vector<BuiltinTD> builtins)
         : TypePool{arena} {
 
-        for (BuiltinTD td : builtins) {
-            std::ignore = insert_or_get(td);
-        }
+        for (BuiltinTD td : builtins)
+            std::ignore = insert_or_get(td, true);
     }
 
     TypePool(const TypePool&)            = delete;
@@ -59,9 +58,15 @@ public:
     [[nodiscard]] TypeId vector_td(TypeId component_type_id, uint32_t component_count);
     [[nodiscard]] TypeId matrix_td(TypeId column_type_id, uint32_t column_count);
     [[nodiscard]] TypeId array_td(TypeId element_type_id, uint32_t length);
-    [[nodiscard]] TypeId builtin_td(uint8_t kind);
-    [[nodiscard]] TypeId get_struct_td(std::string_view name);
 
+    [[nodiscard]] TypeId builtin_td(uint8_t kind);
+
+    template <CEnumOf<uint8_t> T>
+    TypeId builtin_td(T kind) {
+        return builtin_td(static_cast<uint8_t>(kind));
+    }
+
+    [[nodiscard]] TypeId get_struct_td(std::string_view name);
     TypeId make_struct_td(std::string name, std::vector<StructData::FieldInfo> fields);
 
 private:

@@ -16,8 +16,10 @@ namespace stc {
 // NodeBaseTy is the base class from which all AST types are derived
 // NodeKindTy is the kind (enum) type used to uniquely identify different node types
 
-// TODO: NodeIdTy reqs
 template <CStrongId NodeIdTy, typename NodeBaseTy, typename NodeKindTy>
+requires requires {
+    { NodeIdTy::null_id() } -> std::convertible_to<NodeIdTy>;
+}
 struct ASTCtx {
     using node_id_type   = NodeIdTy;
     using node_base_type = NodeBaseTy;
@@ -32,13 +34,14 @@ public:
     types::TypePool type_pool;
     SrcInfoManager src_info_manager;
 
-    explicit ASTCtx(NodeIdTy::id_type node_arena_kb          = 128,
-                    SrcLocationId::id_type src_info_arena_kb = 128,
-                    types::TypeId::id_type type_arena_kb     = 32)
+    explicit ASTCtx(std::vector<types::BuiltinTD> type_builtins = {},
+                    NodeIdTy::id_type node_arena_kb             = 128,
+                    SrcLocationId::id_type src_info_arena_kb    = 128,
+                    types::TypeId::id_type type_arena_kb        = 32)
         : node_arena{node_arena_kb},
           src_info_arena{src_info_arena_kb},
           type_arena{type_arena_kb},
-          type_pool{type_arena},
+          type_pool{type_arena, std::move(type_builtins)},
           src_info_manager{src_info_arena} {}
 
     // CLEANUP: enable move semantics (requires BumpArena support), share ASTCtx between passes
@@ -49,7 +52,7 @@ public:
 
     template <typename T, typename... Args>
     requires std::derived_from<T, NodeBaseTy>
-    std::pair<NodeIdTy, T*> alloc_node(Args&&... args) {
+    std::pair<NodeIdTy, T*> emplace_node(Args&&... args) {
         return node_arena.template emplace<T>(std::forward<Args>(args)...);
     }
 
@@ -70,7 +73,7 @@ public:
         if (id == NodeIdTy::null_id())
             return false;
 
-        NodeBaseTy* node = static_cast<NodeBaseTy*>(node_arena.get_ptr(id));
+        NodeBaseTy* node = get_dyn<T>(id);
 
         return dyn_cast<T>(node) != nullptr;
     }

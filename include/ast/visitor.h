@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ast/ast_context.h"
+#include "ast/context.h"
 #include <type_traits>
 
 namespace stc {
@@ -44,11 +44,18 @@ public:
     }
 
 public:
-    RetTy visit(NodeIdTy id) {
-        impl_this()->pre_visit(id);
+    RetTy visit(NodeBaseTy* node, bool call_pre_visit = true) {
+        if (call_pre_visit)
+            impl_this()->pre_visit_ptr(node);
 
-        NodeBaseTy* node = ctx.get_node(id);
         return impl_this()->dispatch_wrapper(node);
+    }
+
+    RetTy visit(NodeIdTy id, bool call_pre_visit = true) {
+        if (call_pre_visit)
+            impl_this()->pre_visit_id(id);
+
+        return impl_this()->visit(ctx.get_node(id), false);
     }
 
 protected:
@@ -61,6 +68,8 @@ protected:
 
     // ImplTy MUST implement this
     RetTy dispatch([[maybe_unused]] NodeBaseTy* node) {
+        // CLEANUP: static error
+
         throw std::logic_error{
             "Unimplemented dispatch(NodeBaseTy*) function member in derived class of ASTVisitor"};
     }
@@ -74,8 +83,9 @@ protected:
         }
     }
 
-    // ImplTy CAN implement this
-    void pre_visit(NodeIdTy) {}
+    // ImplTy CAN implement these
+    void pre_visit_id([[maybe_unused]] NodeIdTy id) {}
+    void pre_visit_ptr([[maybe_unused]] NodeBaseTy* node) {}
 };
 
 } // namespace stc

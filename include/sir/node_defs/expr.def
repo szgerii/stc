@@ -10,6 +10,7 @@ STC_X(StructInstantiationLiteral, StructInstLit)
 STC_X(ScopedExpr, ScopedExpr)
 STC_X(BinaryOp, BinOp)
 STC_X(ExplicitCast, ExplCast)
+STC_X(FunctionCall, FnCall)
 STC_X_LAST(DeclRefExpr, DeclRef)
 
 #include "common/x_macros/end_def.inc"

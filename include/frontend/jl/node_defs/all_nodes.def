@@ -1,11 +1,15 @@
 #include "common/x_macros/begin_def.inc"
 
-STC_X_FIRST(BoolLiteral, BoolLit)
-STC_X(IntLiteral, IntLit)
-STC_X(UIntLiteral, UIntLit)
-STC_X(Float32Literal, Float32Lit)
-STC_X(Float64Literal, Float64Lit)
-STC_X(BinaryOp, BinOp)
-STC_X_LAST(Return, Return)
+#if defined(STC_X_NO_FIRST) || defined(STC_X_NO_LAST)
+    #error "Multi-level aggregation is not currently supported by the X-Macro system"
+#endif
+
+#define STC_X_NO_LAST
+#include "frontend/jl/node_defs/expr.def"
+#undef STC_X_NO_LAST
+
+#define STC_X_NO_FIRST
+#include "frontend/jl/node_defs/stmt.def"
+#undef STC_X_NO_FIRST
 
 #include "common/x_macros/end_def.inc"

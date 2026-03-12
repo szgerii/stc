@@ -22,6 +22,7 @@ namespace stc::sir {
 using namespace stc::types;
 
 // CLEANUP: go through structs and make use of _node_storage properly
+// CLEANUP: remove need for explicit type in ctors if possible
 // FEATURE: trailing objects pattern where applicable
 
 struct NodeId : public StrongId<uint32_t> {
@@ -62,7 +63,7 @@ enum class NodeKind : uint8_t {
         #include "sir/node_defs/stmt.def"
     #undef X_FIRST
 
-    LastStmt = Return,
+    LastStmt = Break,
 
     #undef X
 };
@@ -201,6 +202,9 @@ struct Expr : public Stmt {
     explicit Expr(SrcLocationId location, NodeKind kind, TypeId type, uint8_t node_storage = 0U)
         : Stmt{location, kind, pack_to_u32(type, node_storage)} {}
 
+    explicit Expr(SrcLocationId location, NodeKind kind, uint8_t node_storage = 0U)
+        : Expr{location, kind, TypeId::null_id(), node_storage} {}
+
     TypeId type() const { return static_cast<TypeId>((_node_storage >> 8) & 0xFFFF); }
     uint8_t node_storage() const { return static_cast<uint8_t>(_node_storage & 0xFF); }
 
@@ -226,8 +230,8 @@ struct BoolLiteral : public Expr {
 struct IntLiteral : public Expr {
     std::string data;
 
-    explicit IntLiteral(SrcLocationId location, TypeId int_type, std::string data)
-        : Expr{location, NodeKind::IntLit, int_type}, data{std::move(data)} {}
+    explicit IntLiteral(SrcLocationId location, TypeId type, std::string data)
+        : Expr{location, NodeKind::IntLit, type}, data{std::move(data)} {}
 
     SAME_NODE_T_DEF(NodeKind::IntLit)
 };
@@ -235,8 +239,8 @@ struct IntLiteral : public Expr {
 struct FloatLiteral : public Expr {
     std::string data;
 
-    explicit FloatLiteral(SrcLocationId location, TypeId float_type, std::string data)
-        : Expr{location, NodeKind::FloatLit, float_type}, data{std::move(data)} {}
+    explicit FloatLiteral(SrcLocationId location, TypeId type, std::string data)
+        : Expr{location, NodeKind::FloatLit, type}, data{std::move(data)} {}
 
     SAME_NODE_T_DEF(NodeKind::FloatLit)
 };
@@ -244,8 +248,8 @@ struct FloatLiteral : public Expr {
 struct VectorLiteral : public Expr {
     std::vector<NodeId> components;
 
-    explicit VectorLiteral(SrcLocationId location, TypeId vec_type, std::vector<NodeId> components)
-        : Expr{location, NodeKind::VecLit, vec_type}, components{std::move(components)} {}
+    explicit VectorLiteral(SrcLocationId location, TypeId type, std::vector<NodeId> components)
+        : Expr{location, NodeKind::VecLit, type}, components{std::move(components)} {}
 
     SAME_NODE_T_DEF(NodeKind::VecLit)
 };
@@ -254,8 +258,8 @@ struct VectorLiteral : public Expr {
 struct MatrixLiteral : public Expr {
     std::vector<NodeId> data;
 
-    explicit MatrixLiteral(SrcLocationId location, TypeId mat_type, std::vector<NodeId> data)
-        : Expr{location, NodeKind::MatLit, mat_type}, data{std::move(data)} {}
+    explicit MatrixLiteral(SrcLocationId location, TypeId type, std::vector<NodeId> data)
+        : Expr{location, NodeKind::MatLit, type}, data{std::move(data)} {}
 
     SAME_NODE_T_DEF(NodeKind::MatLit)
 };
@@ -263,18 +267,20 @@ struct MatrixLiteral : public Expr {
 struct ArrayLiteral : public Expr {
     std::vector<NodeId> elements;
 
-    explicit ArrayLiteral(SrcLocationId location, TypeId arr_type, std::vector<NodeId> elements)
-        : Expr{location, NodeKind::ArrayLit, arr_type}, elements{std::move(elements)} {}
+    explicit ArrayLiteral(SrcLocationId location, TypeId type, std::vector<NodeId> elements)
+        : Expr{location, NodeKind::ArrayLit, type}, elements{std::move(elements)} {}
 
     SAME_NODE_T_DEF(NodeKind::ArrayLit)
 };
 
 struct StructInstantiationLiteral : public Expr {
+    std::string struct_name;
     std::vector<NodeId> field_values;
 
-    explicit StructInstantiationLiteral(SrcLocationId location, TypeId struct_type,
+    explicit StructInstantiationLiteral(SrcLocationId location, std::string struct_name,
                                         std::vector<NodeId> field_values)
-        : Expr{location, NodeKind::StructInstLit, struct_type},
+        : Expr{location, NodeKind::StructInstLit},
+          struct_name{std::move(struct_name)},
           field_values{std::move(field_values)} {}
 
     SAME_NODE_T_DEF(NodeKind::StructInstLit)
@@ -283,8 +289,8 @@ struct StructInstantiationLiteral : public Expr {
 struct ScopedExpr : public Expr {
     NodeId inner_expr;
 
-    explicit ScopedExpr(SrcLocationId location, NodeId inner_expr, TypeId type)
-        : Expr{location, NodeKind::ScopedExpr, type}, inner_expr{inner_expr} {}
+    explicit ScopedExpr(SrcLocationId location, NodeId inner_expr)
+        : Expr{location, NodeKind::ScopedExpr}, inner_expr{inner_expr} {}
 };
 
 struct BinaryOp : public Expr {
@@ -292,9 +298,8 @@ struct BinaryOp : public Expr {
 
     NodeId lhs, rhs;
 
-    // CLEANUP: remove need for explicit type
-    explicit BinaryOp(SrcLocationId location, TypeId type, OpKind op, NodeId lhs, NodeId rhs)
-        : Expr{location, NodeKind::BinOp, type, static_cast<uint8_t>(op)}, lhs{lhs}, rhs{rhs} {}
+    explicit BinaryOp(SrcLocationId location, OpKind op, NodeId lhs, NodeId rhs)
+        : Expr{location, NodeKind::BinOp, static_cast<uint8_t>(op)}, lhs{lhs}, rhs{rhs} {}
 
     OpKind op() const { return static_cast<OpKind>(node_storage()); }
 
@@ -304,18 +309,27 @@ struct BinaryOp : public Expr {
 struct ExplicitCast : public Expr {
     NodeId inner;
 
-    explicit ExplicitCast(SrcLocationId location, NodeId inner, TypeId target_type)
+    explicit ExplicitCast(SrcLocationId location, TypeId target_type, NodeId inner)
         : Expr{location, NodeKind::ExplCast, target_type}, inner{inner} {}
 
     SAME_NODE_T_DEF(NodeKind::ExplCast)
 };
 
+struct FunctionCall : public Expr {
+    std::string fn_name;
+    std::vector<NodeId> args;
+
+    explicit FunctionCall(SrcLocationId location, std::string fn_name, std::vector<NodeId> args)
+        : Expr{location, NodeKind::FnCall}, fn_name{std::move(fn_name)}, args{std::move(args)} {}
+
+    SAME_NODE_T_DEF(NodeKind::FnCall)
+};
+
 struct DeclRefExpr : public Expr {
     NodeId decl;
 
-    // TODO: remove need for explicit type
-    explicit DeclRefExpr(SrcLocationId location, NodeId decl, TypeId decl_type)
-        : Expr{location, NodeKind::DeclRef, decl_type}, decl{decl} {}
+    explicit DeclRefExpr(SrcLocationId location, NodeId decl)
+        : Expr{location, NodeKind::DeclRef}, decl{decl} {}
 
     SAME_NODE_T_DEF(NodeKind::DeclRef)
 };
@@ -356,12 +370,26 @@ struct IfStmt : public Stmt {
 };
 
 struct ReturnStmt : public Stmt {
-    NodeId ret_value_expr;
+    NodeId inner;
 
-    explicit ReturnStmt(SrcLocationId location, NodeId ret_value_expr)
-        : Stmt{location, NodeKind::Return}, ret_value_expr{ret_value_expr} {}
+    explicit ReturnStmt(SrcLocationId location, NodeId inner)
+        : Stmt{location, NodeKind::Return}, inner{inner} {}
 
     SAME_NODE_T_DEF(NodeKind::Return)
+};
+
+struct ContinueStmt : public Stmt {
+    explicit ContinueStmt(SrcLocationId location)
+        : Stmt{location, NodeKind::Continue} {}
+
+    SAME_NODE_T_DEF(NodeKind::Continue)
+};
+
+struct BreakStmt : public Stmt {
+    explicit BreakStmt(SrcLocationId location)
+        : Stmt{location, NodeKind::Break} {}
+
+    SAME_NODE_T_DEF(NodeKind::Break)
 };
 
 template <typename T>

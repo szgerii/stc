@@ -214,6 +214,17 @@ void GLSLCodeGenVisitor::visit_ExplicitCast(ExplicitCast& cast) {
     out << ')';
 }
 
+void GLSLCodeGenVisitor::visit_FunctionCall(FunctionCall& fn_call) {
+    out << fn_call.fn_name << '(';
+
+    for (size_t i = 0; i < fn_call.args.size(); i++) {
+        visit(fn_call.args[i]);
+
+        if (i != fn_call.args.size() - 1)
+            out << ", ";
+    }
+}
+
 void GLSLCodeGenVisitor::visit_DeclRefExpr(DeclRefExpr& decl_ref) {
     NodeBase* decl_node = ctx.get_node(decl_ref.decl);
     assert(decl_node != nullptr && "nullptr pointing DeclRefExpr");
@@ -230,21 +241,17 @@ void GLSLCodeGenVisitor::visit_DeclRefExpr(DeclRefExpr& decl_ref) {
 
 void GLSLCodeGenVisitor::visit_ScopedStmt(ScopedStmt& scoped_stmt) {
     out << "{\n";
+
     indent_level++;
     visit(scoped_stmt.inner_stmt);
     indent_level--;
+
     out << "}\n";
 }
 
 void GLSLCodeGenVisitor::visit_CompoundStmt(CompoundStmt& cmpd_stmt) {
-    out << indent() << "{\n";
-
-    indent_level++;
     for (NodeId node : cmpd_stmt.body)
         visit(node);
-    indent_level--;
-
-    out << '\n' << indent() << "}\n";
 }
 
 void GLSLCodeGenVisitor::visit_IfStmt(IfStmt& if_stmt) {
@@ -266,8 +273,16 @@ void GLSLCodeGenVisitor::visit_IfStmt(IfStmt& if_stmt) {
 
 void GLSLCodeGenVisitor::visit_ReturnStmt(ReturnStmt& return_stmt) {
     out << indent() << "return ";
-    visit(return_stmt.ret_value_expr);
+    visit(return_stmt.inner);
     out << ";\n";
+}
+
+void GLSLCodeGenVisitor::visit_ContinueStmt([[maybe_unused]] ContinueStmt& cont_stmt) {
+    out << indent() << "continue;\n";
+}
+
+void GLSLCodeGenVisitor::visit_BreakStmt([[maybe_unused]] BreakStmt& break_stmt) {
+    out << indent() << "break;\n";
 }
 
 } // namespace stc::glsl

@@ -2,16 +2,16 @@
 
 #include <iostream>
 
-#include "sir/sir_visitor.h"
+#include "sir/visitor.h"
 
 namespace stc::sir {
 
-class SIRDumper : public SIRVisitor<SIRDumper, const SIRCtx, void> {
+class SIRDumper final : public SIRVisitor<SIRDumper, const SIRCtx, void> {
 public:
     explicit SIRDumper(const SIRCtx& ctx, std::ostream& out)
         : SIRVisitor{ctx}, out{out} {}
 
-    void pre_visit(NodeId node);
+    void pre_visit_id(NodeId node);
 
     // clang-format off
     #define X(type, kind) STC_AST_VISITOR_DECL(void, type)
@@ -29,7 +29,6 @@ private:
     void dec_indent(size_t level = STC_DUMP_INDENT);
 };
 
-// TODO
 static_assert(CSIRVisitorImpl<SIRDumper, void>);
 
 } // namespace stc::sir

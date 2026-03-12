@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sir/sir_context.h"
+#include "sir/context.h"
 
 namespace stc::glsl {
 

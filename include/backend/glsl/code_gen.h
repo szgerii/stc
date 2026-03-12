@@ -3,13 +3,13 @@
 #include <sstream>
 
 #include "backend/glsl/glsl_context.h"
-#include "sir/sir_visitor.h"
+#include "sir/visitor.h"
 
 namespace stc::glsl {
 
 using namespace stc::sir;
 
-class GLSLCodeGenVisitor : public SIRVisitor<GLSLCodeGenVisitor, const GLSLCtx, void> {
+class GLSLCodeGenVisitor final : public SIRVisitor<GLSLCodeGenVisitor, const GLSLCtx, void> {
 public:
     GLSLCodeGenVisitor(const GLSLCtx& ctx)
         : SIRVisitor{ctx} {}

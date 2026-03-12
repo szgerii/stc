@@ -51,7 +51,7 @@ struct SrcLocationId : public StrongId<uint32_t> {
 };
 
 std::nullptr_t report(const SrcFile& file, SrcLocation location, std::string_view msg,
-                      bool is_warning, std::ostream& out = std::cerr);
+                      std::string_view prefix = ""sv, std::ostream& out = std::cerr);
 std::nullptr_t error(const SrcFile& file, SrcLocation location, std::string_view msg,
                      std::ostream& out = std::cerr);
 std::nullptr_t warning(const SrcFile& file, SrcLocation location, std::string_view msg,

@@ -7,6 +7,8 @@
 
 namespace stc::jl {
 
+using namespace std::literals;
+
 extern "C" STC_API void stc_jl_free(void* ptr) noexcept {
     std::cout << "stc_jl_free invoked\n";
 
@@ -14,7 +16,7 @@ extern "C" STC_API void stc_jl_free(void* ptr) noexcept {
         std::free(ptr);
 }
 
-inline constexpr std::string_view return_str{"return value string from cpp"};
+inline constexpr std::string_view return_str{"return value string from cpp"sv};
 
 const char* print_expr(jl_value_t* expr_val) {
     if (!jl_is_expr(expr_val)) {

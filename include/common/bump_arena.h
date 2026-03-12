@@ -126,19 +126,12 @@ public:
         T* obj_ptr = new (mem) T{std::forward<Args>(args)...};
 
         if constexpr (!std::is_trivially_destructible_v<T>) {
-            // auto [_, dtor_mem] = allocate_for<DtorLLNode>();
-            // auto dtor_call     = [](void* obj) { static_cast<T*>(obj)->~T(); };
-            // dtor_tail          = new (dtor_mem) DtorLLNode{dtor_call, obj_ptr, dtor_tail};
-
-            add_destructor([](void* obj) { static_cast<T*>(obj)->~T(); }, obj_ptr);
+            auto [_, dtor_mem] = allocate_for<DtorLLNode>();
+            auto dtor_call     = [](void* obj) { static_cast<T*>(obj)->~T(); };
+            dtor_tail          = new (dtor_mem) DtorLLNode{dtor_call, obj_ptr, dtor_tail};
         }
 
         return {offset, obj_ptr};
-    }
-
-    void add_destructor(void (*callback)(void*), void* obj = nullptr) {
-        auto [_, dtor_mem] = allocate_for<DtorLLNode>();
-        dtor_tail          = new (dtor_mem) DtorLLNode{callback, obj, dtor_tail};
     }
 
     // FEATURE: use fixed sized slabs instead to have slabs[slab_offset].base + offset

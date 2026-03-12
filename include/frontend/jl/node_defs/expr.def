@@ -1,0 +1,17 @@
+#include "common/x_macros/begin_def.inc"
+
+STC_X_FIRST(BoolLiteral, BoolLit)
+STC_X(Int32Literal, I32Lit)
+STC_X(Int64Literal, I64Lit)
+STC_X(UInt8Literal, U8Lit)
+STC_X(UInt16Literal, U16Lit)
+STC_X(UInt32Literal, U32Lit)
+STC_X(UInt64Literal, U64Lit)
+STC_X(UInt128Literal, U128Lit)
+STC_X(Float32Literal, F32Lit)
+STC_X(Float64Literal, F64Lit)
+STC_X(StringLiteral, StrLit)
+STC_X(FunctionCall, FnCall)
+STC_X_LAST(IfExpr, If)
+
+#include "common/x_macros/end_def.inc"

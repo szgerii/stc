@@ -83,6 +83,12 @@ TypeId TypePool::array_td(TypeId element_type_id, uint32_t length) {
     return insert_or_get(ArrayTD{.element_type_id = element_type_id, .length = length});
 }
 
+TypeId TypePool::builtin_td(uint8_t kind) {
+    TypeId id = get(BuiltinTD{kind});
+    assert(!id.is_null() && "built-in type not found in pool");
+    return id;
+}
+
 TypeId TypePool::get_struct_td(std::string_view name) {
     if (auto it = struct_map.find(name); it != struct_map.end())
         return it->second;
@@ -110,12 +116,6 @@ TypeId TypePool::make_struct_td(std::string name, std::vector<StructData::FieldI
     struct_map[data_ptr->name] = t_id;
 
     return t_id;
-}
-
-TypeId TypePool::builtin_td(uint8_t kind) {
-    TypeId id = get(BuiltinTD{kind});
-    assert(!id.is_null() && "built-in type not found ni pool");
-    return id;
 }
 
 } // namespace stc::types
