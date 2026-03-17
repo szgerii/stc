@@ -179,19 +179,19 @@ void GLSLCodeGenVisitor::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
     out << ')';
 }
 
-void GLSLCodeGenVisitor::visit_StructInstantiationLiteral(StructInstantiationLiteral& si_lit) {
-    assert(ctx.type_pool.is_type_of<StructTD>(si_lit.type()) &&
-           "StructInstantiationLiteral with non-struct type in AST");
+void GLSLCodeGenVisitor::visit_StructInstantiation(StructInstantiation& s_inst) {
+    assert(ctx.type_pool.is_type_of<StructTD>(s_inst.type()) &&
+           "StructInstantiation with non-struct type in AST");
 
-    StructTD s_td = ctx.type_pool.get_td(si_lit.type()).as<StructTD>();
+    StructTD s_td = ctx.type_pool.get_td(s_inst.type()).as<StructTD>();
     assert(s_td.data != nullptr && "StructTD without data storage");
 
     out << ctx.get_sym(s_td.data->name) << '(';
 
-    for (size_t i = 0; i < si_lit.field_values.size(); i++) {
-        visit(si_lit.field_values[i]);
+    for (size_t i = 0; i < s_inst.field_values.size(); i++) {
+        visit(s_inst.field_values[i]);
 
-        if (i != si_lit.field_values.size() - 1)
+        if (i != s_inst.field_values.size() - 1)
             out << ", ";
     }
 

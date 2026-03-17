@@ -27,7 +27,6 @@ requires requires (CtxTy ctx, CtxTy::node_id_type id) {
 class ASTVisitor {
     using NodeIdTy   = CtxTy::node_id_type;
     using NodeBaseTy = CtxTy::node_base_type;
-    using NodeKindTy = CtxTy::node_kind_type;
 
 public:
     CtxTy& ctx;
@@ -45,15 +44,23 @@ public:
 
 public:
     RetTy visit(NodeBaseTy* node, bool call_pre_visit = true) {
-        if (call_pre_visit)
-            impl_this()->pre_visit_ptr(node);
+        if (call_pre_visit) {
+            bool pre_result = impl_this()->pre_visit_ptr(node);
+
+            if (!pre_result)
+                return impl_this()->visit_default_case();
+        }
 
         return impl_this()->dispatch_wrapper(node);
     }
 
     RetTy visit(NodeIdTy id, bool call_pre_visit = true) {
-        if (call_pre_visit)
-            impl_this()->pre_visit_id(id);
+        if (call_pre_visit) {
+            bool pre_result = impl_this()->pre_visit_id(id);
+
+            if (!pre_result)
+                return impl_this()->visit_default_case();
+        }
 
         return impl_this()->visit(ctx.get_node(id), false);
     }
@@ -84,8 +91,8 @@ protected:
     }
 
     // ImplTy CAN implement these
-    void pre_visit_id([[maybe_unused]] NodeIdTy id) {}
-    void pre_visit_ptr([[maybe_unused]] NodeBaseTy* node) {}
+    bool pre_visit_id([[maybe_unused]] NodeIdTy id) { return true; }
+    bool pre_visit_ptr([[maybe_unused]] NodeBaseTy* node) { return true; }
 };
 
 } // namespace stc

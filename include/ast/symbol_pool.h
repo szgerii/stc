@@ -15,12 +15,11 @@ struct SymbolId : public StrongId<uint32_t> {
 };
 
 class SymbolPool {
-    using ArenaTy      = BumpArena<SymbolId::id_type>;
-    using ArenaAllocTy = BumpArenaAllocator<SymbolId::id_type, std::string>;
+    using ArenaTy = BumpArena<SymbolId::id_type>;
 
 public:
     explicit SymbolPool(SymbolId::id_type initial_capacity_kb = 128U)
-        : arena{initial_capacity_kb * 1024U}, arena_allocator{&arena} {}
+        : arena{initial_capacity_kb * 1024U}, pool{} {}
 
     SymbolPool(const SymbolPool&)            = delete;
     SymbolPool& operator=(const SymbolPool&) = delete;
@@ -34,7 +33,6 @@ public:
 
 private:
     ArenaTy arena;
-    ArenaAllocTy arena_allocator;
 
     std::unordered_map<std::string_view, SymbolId> pool;
 };

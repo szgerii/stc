@@ -1,6 +1,6 @@
 # Shader Transpiler Core
 
-*Shader Transpiler Core* (STC) is a transpiler that aims to translate code snippets coming from CPU-side imperative/general purpose languages to shader languages. The main purpose is to be able to provide an automatic interface through which the end user doesn't even have to be aware that their code is being transpiled and run on the GPU. This means that instead of adding a bunch of decorators/attributes to the source language and requiring the end user to think in terms of coding for the GPU, the code is mostly transpiled as it would behave in the source context. So the aim is to allow "trivial" GPU-side parallelization of arbitrary CPU-side user code, as long as it doesn't rely on CPU or source language features that would make this impossible.
+_Shader Transpiler Core_ (STC) is a transpiler that aims to translate code snippets coming from CPU-side imperative/general purpose languages to shader languages. The main purpose is to be able to provide an automatic interface through which the end user doesn't even have to be aware that their code is being transpiled and run on the GPU. This means that instead of adding a bunch of decorators/attributes to the source language and requiring the end user to think in terms of coding for the GPU, the code is mostly transpiled as it would behave in the source context. So the aim is to allow "trivial" GPU-side parallelization of arbitrary CPU-side user code, as long as it doesn't rely on CPU or source language features that would make this impossible.
 
 The initial aim is to support Julia to GLSL transpilation, for the optimization of interactive tessellation of parametric geometries in the [Juliagebra](https://github.com/Csabix/Juliagebra) project. Hopefully, in the future, other source and target languages will be supported as well (e.g. HLSL or SPIR-V). The above use case demonstrates the previously mentioned "hidden transpilation to GPU" flow's usefulness: Juliagebra aims to target not just CS people, but also those who might not be too familiar with deeper programming or computer architecture concepts, such as the quirks of GPU programming. However, the parallelization of tessellating parametric curves and surfaces (which has to be performed in an interactive manner), would be a noticable speed up during the interactive updates of the library. The problem is that the actual code that has to be evaluated/sampled comes from the end user. Using this transpiler, the same parametric functions that the user would normally write (for the CPU) can be turned into OpenGL compute shaders, and their evaluation can be executed in parallel.
 
@@ -25,20 +25,21 @@ Here is a (very) rough overview of the development timeline and its current prog
 - [ ] Expand supported Julia and GLSL subsets
 - [ ] Tests
 - [ ] CI/CD (should be as simple as auto running pre-existing CMake targets on GitHub)
-- [ ] MinGW support in CMakeLists.txt for Windows builds
 - [ ] Wiki?
 
 Note that these aren't necessarily in "chronological" order, and the points differ vastly in difficulty and time needed to implement them.
 
 # Build System
 
-The project uses CMake for the build and development pipeline. It pulls together a couple of different tools and build requirements, which are listed below. Entries marked *(optional)* will not cause the config/build process to fail if they are not available on the development system, but they will be automatically enabled when accessible through PATH.
+The project uses CMake for the build and development pipeline. It pulls together a couple of different tools and build requirements, which are listed below. Entries marked _(optional)_ will not cause the config/build process to fail if they are not available on the development system, but they will be automatically enabled when accessible through PATH.
 
 The standard build flow is the following:
+
 ```bash
 cmake -B build
 cmake --build build
 ```
+
 See [Compilation output](#compilation-output) for what this actually produces.
 
 ## Note for development using Visual Studio
@@ -51,7 +52,7 @@ The recommended way to use Visual Studio for development is to simply not, whene
 
 If [Approach #1](#approach-1) is not applicable, the second-best way to use Visual Studio is to open the root directory directly, rather than the CMake generated solution and project files. VS will still integrate with CMake, and will use it for configuring and building the project. The reasoning for this approach is that this allows the use of tools like clang-tidy, which Visual Studio (and MSVC in general) mostly ignores otherwise, when ran directly on the generated files.
 
-There are a couple of build configurations provided (see *CMakeSettings.json* for details). The main difference is the generator they use (Ninja or VS, where Ninja is **highly** recommended over VS), and whether Debug or Release config is used for building. All configs are x64-based, though x86 can be set up later, if needed. All configs also use MSVC, though, again, this can be extended in the future to include clang, gcc, etc. (however, with other compilers, any environment other than VS probably offers a better dev experience, see [Approach #1](#approach-1)).
+There are a couple of build configurations provided (see _CMakeSettings.json_ for details). The main difference is the generator they use (Ninja or VS, where Ninja is **highly** recommended over VS), and whether Debug or Release config is used for building. All configs are x64-based, though x86 can be set up later, if needed. All configs also use MSVC, though, again, this can be extended in the future to include clang, gcc, etc. (however, with other compilers, any environment other than VS probably offers a better dev experience, see [Approach #1](#approach-1)).
 
 VS support is not perfect, but it should be a viable option for development. As I personally don't mainly use VS, I did not want to dedicate any more time to implementing every single build step two times (once for clang/gcc, and once for MSVC). One imperfection is that with Ninja as a generator, clang-tidy correctly respects the warnings as errors option during building, whereas with the VS generators, it does not. Another nuisance is that VS tends to miss and/or misrecognize the more dynamic parts of the build process (e.g. addition/removal of sandbox targets), this is usually solved by deleting the CMake cache and reconfiguring. If that doesn't fix the issue, restarting VS might help. If that still doesn't fix the issue, it might be time to reconsider [Approach #1](#approach-1).
 
@@ -96,11 +97,12 @@ ccache is included in the build process to speed up compilation time through com
 
 ## [clang-format](https://clang.llvm.org/docs/ClangFormat.html) (optional)
 
-clang-format is used for consistent code style. The CMake config provides the check_format and fix_format targets for retrieving a list of code style violations and automatically fixing them, respectively. The rules set up in the `.clang-format` file are mostly out of personal preference, that is, what I find to be *"readable"* and *"nice-looking"* for C++ code.
+clang-format is used for consistent code style. The CMake config provides the check_format and fix_format targets for retrieving a list of code style violations and automatically fixing them, respectively. The rules set up in the `.clang-format` file are mostly out of personal preference, that is, what I find to be _"readable"_ and _"nice-looking"_ for C++ code.
 
 A sample pre-commit hook script is also included in the `scripts/` directory, which verifies that the code contains no style violations. The script performs the validation on the current state of the directory, so any changes that are present, but are not staged for the current commit should be stashed for the duration before committing.
 
 To use the pre-commit hook locally:
+
 ```bash
 cp scripts/pre-commit .git/hooks/
 ```
@@ -130,6 +132,7 @@ Currently, this only affects Catch2 building.
 Take a regular Windows/WSL setup, both of their command lines open in the same directory (a clone of this repo). The following command sequences, executed in any interleaved order, will never conflict, and both of them will compile Catch2 exactly one time, once for Windows and once for Linux. Deleting the build directories and performing another build doesn't invalidate external dependencies.
 
 On Windows:
+
 ```powershell
 cmake -B build_win
 cmake --build build_win
@@ -139,6 +142,7 @@ cmake --build build_win
 ```
 
 On WSL (or in a dual-booted linux system):
+
 ```bash
 cmake -B build_linux
 cmake --build build_linux

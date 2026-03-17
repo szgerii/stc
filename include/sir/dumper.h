@@ -11,7 +11,7 @@ public:
     explicit SIRDumper(SIRCtx& ctx, std::ostream& out)
         : SIRVisitor{ctx}, out{out} {}
 
-    void pre_visit_id(NodeId node);
+    bool pre_visit_id(NodeId node);
 
     // clang-format off
     #define X(type, kind) STC_AST_VISITOR_DECL(void, type)

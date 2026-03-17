@@ -51,12 +51,14 @@ void SIRDumper::dec_indent(size_t level) {
     indent_level -= level;
 }
 
-void SIRDumper::pre_visit_id(NodeId node_id) {
+bool SIRDumper::pre_visit_id(NodeId node_id) {
     NodeBase* node = ctx.get_node(node_id);
 
     out << indent() << '[' << std::format("{:p}", static_cast<void*>(ctx.get_node(node_id))) << "|"
         << node_id << '|'
         << (node != nullptr ? std::to_string(static_cast<uint8_t>(node->kind())) : "?") << "]\n";
+
+    return true;
 }
 
 void SIRDumper::visit_VarDecl(VarDecl& var_decl) {
@@ -151,15 +153,15 @@ void SIRDumper::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
     dec_indent();
 }
 
-void SIRDumper::visit_StructInstantiationLiteral(StructInstantiationLiteral& si_lit) {
-    out << indent() << "StructInstantiationLiteral (" << type_str(si_lit.type()) << "):\n";
+void SIRDumper::visit_StructInstantiation(StructInstantiation& s_inst) {
+    out << indent() << "StructInstantiation (" << type_str(s_inst.type()) << "):\n";
 
-    assert(ctx.type_pool.is_type_of<StructTD>(si_lit.type()));
-    const StructData* s_data = ctx.type_pool.get_td(si_lit.type()).as<StructTD>().data;
+    assert(ctx.type_pool.is_type_of<StructTD>(s_inst.type()));
+    const StructData* s_data = ctx.type_pool.get_td(s_inst.type()).as<StructTD>().data;
     assert(s_data != nullptr);
 
     size_t f_idx = 0;
-    for (NodeId f_value : si_lit.field_values) {
+    for (NodeId f_value : s_inst.field_values) {
         out << indent()
             << dump_label(std::format("field #{} <=> '{}'", f_idx + 1,
                                       ctx.get_sym(s_data->fields[f_idx].name)));

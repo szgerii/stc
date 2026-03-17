@@ -4,22 +4,20 @@
 
 namespace stc {
 
-std::nullptr_t report(std::string_view msg, std::string_view prefix, std::ostream& out) {
+void report(std::string_view msg, std::string_view prefix, std::ostream& out) {
     out << prefix << msg << '\n';
-
-    return nullptr;
 }
 
-std::nullptr_t error(std::string_view msg, std::ostream& out) {
-    return report(msg, "error: ", out);
+void error(std::string_view msg, std::ostream& out) {
+    report(msg, "error: ", out);
 }
 
-std::nullptr_t warning(std::string_view msg, std::ostream& out) {
-    return report(msg, "warning: ", out);
+void warning(std::string_view msg, std::ostream& out) {
+    report(msg, "warning: ", out);
 }
 
-std::nullptr_t internal_error(std::string_view msg, std::ostream& out) {
-    return report(msg, "internal transpiler error: ", out);
+void internal_error(std::string_view msg, std::ostream& out) {
+    report(msg, "internal transpiler error: ", out);
 }
 
 } // namespace stc

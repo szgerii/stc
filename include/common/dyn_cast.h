@@ -4,18 +4,19 @@
 
 namespace stc {
 
-template <typename To, typename From>
-concept CDynCastable = std::derived_from<To, From> && requires (From* ptr) {
-    { To::same_node_t(ptr) } -> std::same_as<bool>;
+template <typename To, typename From, typename KindTy>
+concept CDynCastable = std::derived_from<To, From> && requires (From from, KindTy kind) {
+    { from.kind() } -> std::same_as<KindTy>;
+    { To::same_node_kind(kind) } -> std::same_as<bool>;
 };
 
-template <typename To, typename From>
-requires CDynCastable<To, From>
+template <typename To, typename From, typename KindTy>
+requires CDynCastable<To, From, KindTy>
 To* dyn_cast(From* ptr) {
     if (ptr == nullptr)
         return nullptr;
 
-    if (To::same_node_t(ptr)) {
+    if (To::same_node_kind(ptr->kind())) {
         return static_cast<To*>(ptr);
     }
 
@@ -23,17 +24,9 @@ To* dyn_cast(From* ptr) {
 }
 
 template <typename To, typename From>
-requires CDynCastable<To, From>
-std::unique_ptr<To> dyn_unique_cast(std::unique_ptr<From>&& ptr) {
-    if (ptr == nullptr)
-        return nullptr;
-
-    if (auto* cast_ptr = dyn_cast<To, From>(ptr.get())) {
-        std::ignore = ptr.release();
-        return std::unique_ptr<To>{cast_ptr};
-    }
-
-    return nullptr;
+requires requires { typename From::kind_type; } && CDynCastable<To, From, typename From::kind_type>
+To* dyn_cast(From* ptr) {
+    return dyn_cast<To, From, typename From::kind_type>(ptr);
 }
 
 } // namespace stc

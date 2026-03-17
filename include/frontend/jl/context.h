@@ -12,8 +12,8 @@ enum class NodeKind : uint8_t;
 
 enum class BuiltinTypeKind : uint8_t { Nothing, String, Symbol };
 
-class JLCtx : public ASTCtx<NodeId, Expr, NodeKind> {
-    using Base = ASTCtx<NodeId, Expr, NodeKind>;
+class JLCtx : public ASTCtx<NodeId, Expr> {
+    using Base = ASTCtx<NodeId, Expr>;
 
 public:
     // clang-format off
@@ -23,8 +23,7 @@ public:
     // clang-format on
 
     explicit JLCtx()
-        : ASTCtx<NodeId, Expr, NodeKind>{
-              {{BuiltinTypeKind::Nothing}, {BuiltinTypeKind::String}, {BuiltinTypeKind::Symbol}}} {
+        : Base{{{BuiltinTypeKind::Nothing}, {BuiltinTypeKind::String}, {BuiltinTypeKind::Symbol}}} {
         init_jl_types();
     }
 
@@ -34,15 +33,15 @@ public:
     JLCtx& operator=(JLCtx&&)      = default;
 
 protected:
-    template <typename T, typename U, typename V>
-    explicit JLCtx(ASTCtx<T, U, V>&& other, NodeId::id_type node_arena_kb = 128U)
+    template <typename T, typename U>
+    explicit JLCtx(ASTCtx<T, U>&& other, NodeId::id_type node_arena_kb = 128U)
         : Base{std::move(other), node_arena_kb} {
         init_jl_types();
     }
 
 public:
-    template <typename T, typename U, typename V>
-    [[nodiscard]] static JLCtx move_pools_from(ASTCtx<T, U, V>&& other,
+    template <typename T, typename U>
+    [[nodiscard]] static JLCtx move_pools_from(ASTCtx<T, U>&& other,
                                                NodeId::id_type node_arena_kb) {
         return JLCtx{std::move(other), node_arena_kb};
     }

@@ -12,9 +12,9 @@
 #include "common/utils.h"
 #include "types/types.h"
 
-#define SAME_NODE_T_DEF(Kind)                                                                      \
-    static bool same_node_t(const NodeBase* node) {                                                \
-        return node->kind() == (Kind);                                                             \
+#define SAME_NODE_KIND_DEF(Kind)                                                                   \
+    static bool same_node_kind(NodeKind kind) {                                                    \
+        return kind == (Kind);                                                                     \
     }
 
 namespace stc::sir {
@@ -25,13 +25,13 @@ using namespace stc::types;
 // CLEANUP: remove need for explicit type in ctors if possible
 // FEATURE: trailing objects pattern where applicable
 
-struct NodeId : public StrongId<uint32_t> {
-    using StrongId::StrongId;
+struct NodeId : public SplitU32Id {
+    using SplitU32Id::SplitU32Id;
 
     bool is_null() const { return *this == null_id(); }
 
     // TODO: enforce in arenas
-    static constexpr NodeId null_id() { return 0U; }
+    static constexpr NodeId null_id() { return NodeId{0U, 0U}; }
 };
 
 // ============
@@ -42,7 +42,7 @@ struct NodeId : public StrongId<uint32_t> {
 enum class NodeKind : uint8_t {
     #define X(type, kind) kind,
 
-    InvalidKind,
+    NullKind,
     FirstDecl,
 
     #define X_FIRST(type, kind) kind = FirstDecl,
@@ -74,11 +74,13 @@ enum class NodeKind : uint8_t {
 // ===================
 
 struct NodeBase {
+    using kind_type = NodeKind;
+
     SrcLocationId location;
     uint32_t _kind         : 8;
     uint32_t _node_storage : 24;
 
-    explicit NodeBase(SrcLocationId location, NodeKind kind = NodeKind::InvalidKind,
+    explicit NodeBase(SrcLocationId location, NodeKind kind = NodeKind::NullKind,
                       uint32_t node_storage = 0U)
         : location{location},
           _kind{static_cast<uint32_t>(kind)},
@@ -92,10 +94,9 @@ struct NodeBase {
 
     [[nodiscard]] NodeKind kind() const { return static_cast<NodeKind>(_kind); }
 
-    static bool same_node_t(const NodeBase*) {
-        assert(false && "same_node_t called on NodeBase");
-        return false;
-    }
+    static bool same_node_kind(NodeKind) { return true; }
+
+    static NodeBase* safe_cast_to_base(void* node_ptr, NodeId node_id);
 };
 
 struct Decl : public NodeBase {
@@ -110,8 +111,8 @@ struct Decl : public NodeBase {
     Decl(Decl&&) noexcept            = default;
     Decl& operator=(Decl&&) noexcept = default;
 
-    static bool same_node_t(const NodeBase* node) {
-        return NodeKind::FirstDecl <= node->kind() && node->kind() <= NodeKind::LastDecl;
+    static bool same_node_kind(NodeKind kind) {
+        return NodeKind::FirstDecl <= kind && kind <= NodeKind::LastDecl;
     }
 };
 
@@ -124,8 +125,8 @@ struct Stmt : public NodeBase {
     Stmt(Stmt&&) noexcept            = default;
     Stmt& operator=(Stmt&&) noexcept = default;
 
-    static bool same_node_t(const NodeBase* node) {
-        return NodeKind::FirstStmt <= node->kind() && node->kind() <= NodeKind::LastStmt;
+    static bool same_node_kind(NodeKind kind) {
+        return NodeKind::FirstStmt <= kind && kind <= NodeKind::LastStmt;
     }
 };
 
@@ -141,7 +142,7 @@ struct VarDecl : public Decl {
                      NodeId initializer = NodeId::null_id())
         : Decl{location, NodeKind::VarDecl, var_name}, type{type}, initializer{initializer} {}
 
-    SAME_NODE_T_DEF(NodeKind::VarDecl)
+    SAME_NODE_KIND_DEF(NodeKind::VarDecl)
 };
 
 struct ParamDecl : public Decl {
@@ -150,7 +151,7 @@ struct ParamDecl : public Decl {
     explicit ParamDecl(SrcLocationId location, SymbolId param_name, TypeId type)
         : Decl{location, NodeKind::ParamDecl, param_name}, param_type{type} {}
 
-    SAME_NODE_T_DEF(NodeKind::ParamDecl)
+    SAME_NODE_KIND_DEF(NodeKind::ParamDecl)
 };
 
 struct FunctionDecl : public Decl {
@@ -165,7 +166,7 @@ struct FunctionDecl : public Decl {
           param_decls{std::move(param_decls)},
           body{body} {}
 
-    SAME_NODE_T_DEF(NodeKind::FuncDecl)
+    SAME_NODE_KIND_DEF(NodeKind::FuncDecl)
 };
 
 struct FieldDecl : public Decl {
@@ -174,7 +175,7 @@ struct FieldDecl : public Decl {
     explicit FieldDecl(SrcLocationId location, SymbolId field_name, TypeId field_type)
         : Decl{location, NodeKind::FieldDecl, field_name}, field_type{field_type} {}
 
-    SAME_NODE_T_DEF(NodeKind::FieldDecl)
+    SAME_NODE_KIND_DEF(NodeKind::FieldDecl)
 };
 
 struct StructDecl : public Decl {
@@ -184,7 +185,7 @@ struct StructDecl : public Decl {
                         std::vector<NodeId> field_decls)
         : Decl{location, NodeKind::StructDecl, struct_name}, field_decls{std::move(field_decls)} {}
 
-    SAME_NODE_T_DEF(NodeKind::StructDecl)
+    SAME_NODE_KIND_DEF(NodeKind::StructDecl)
 };
 
 // ===============
@@ -205,8 +206,8 @@ struct Expr : public Stmt {
     TypeId type() const { return static_cast<TypeId::id_type>((_node_storage >> 8) & 0x0000FFFF); }
     uint8_t node_storage() const { return static_cast<uint8_t>(_node_storage & 0xFF); }
 
-    static bool same_node_t(const NodeBase* node) {
-        return node->kind() >= NodeKind::FirstExpr && node->kind() <= NodeKind::LastExpr;
+    static bool same_node_kind(NodeKind kind) {
+        return NodeKind::FirstExpr <= kind && kind <= NodeKind::LastExpr;
     }
 
 private:
@@ -221,7 +222,7 @@ struct BoolLiteral : public Expr {
 
     bool value() const { return static_cast<bool>(node_storage()); }
 
-    SAME_NODE_T_DEF(NodeKind::BoolLit)
+    SAME_NODE_KIND_DEF(NodeKind::BoolLit)
 };
 
 struct IntLiteral : public Expr {
@@ -230,7 +231,7 @@ struct IntLiteral : public Expr {
     explicit IntLiteral(SrcLocationId location, TypeId type, std::string data)
         : Expr{location, NodeKind::IntLit, type}, data{std::move(data)} {}
 
-    SAME_NODE_T_DEF(NodeKind::IntLit)
+    SAME_NODE_KIND_DEF(NodeKind::IntLit)
 };
 
 struct FloatLiteral : public Expr {
@@ -239,7 +240,7 @@ struct FloatLiteral : public Expr {
     explicit FloatLiteral(SrcLocationId location, TypeId type, std::string data)
         : Expr{location, NodeKind::FloatLit, type}, data{std::move(data)} {}
 
-    SAME_NODE_T_DEF(NodeKind::FloatLit)
+    SAME_NODE_KIND_DEF(NodeKind::FloatLit)
 };
 
 struct VectorLiteral : public Expr {
@@ -248,7 +249,7 @@ struct VectorLiteral : public Expr {
     explicit VectorLiteral(SrcLocationId location, TypeId type, std::vector<NodeId> components)
         : Expr{location, NodeKind::VecLit, type}, components{std::move(components)} {}
 
-    SAME_NODE_T_DEF(NodeKind::VecLit)
+    SAME_NODE_KIND_DEF(NodeKind::VecLit)
 };
 
 // column-major storage
@@ -258,7 +259,7 @@ struct MatrixLiteral : public Expr {
     explicit MatrixLiteral(SrcLocationId location, TypeId type, std::vector<NodeId> data)
         : Expr{location, NodeKind::MatLit, type}, data{std::move(data)} {}
 
-    SAME_NODE_T_DEF(NodeKind::MatLit)
+    SAME_NODE_KIND_DEF(NodeKind::MatLit)
 };
 
 struct ArrayLiteral : public Expr {
@@ -267,20 +268,20 @@ struct ArrayLiteral : public Expr {
     explicit ArrayLiteral(SrcLocationId location, TypeId type, std::vector<NodeId> elements)
         : Expr{location, NodeKind::ArrayLit, type}, elements{std::move(elements)} {}
 
-    SAME_NODE_T_DEF(NodeKind::ArrayLit)
+    SAME_NODE_KIND_DEF(NodeKind::ArrayLit)
 };
 
-struct StructInstantiationLiteral : public Expr {
+struct StructInstantiation : public Expr {
     SymbolId struct_name;
     std::vector<NodeId> field_values;
 
-    explicit StructInstantiationLiteral(SrcLocationId location, SymbolId struct_name,
-                                        std::vector<NodeId> field_values)
-        : Expr{location, NodeKind::StructInstLit},
+    explicit StructInstantiation(SrcLocationId location, SymbolId struct_name,
+                                 std::vector<NodeId> field_values)
+        : Expr{location, NodeKind::StructInst},
           struct_name{struct_name},
           field_values{std::move(field_values)} {}
 
-    SAME_NODE_T_DEF(NodeKind::StructInstLit)
+    SAME_NODE_KIND_DEF(NodeKind::StructInst)
 };
 
 struct ScopedExpr : public Expr {
@@ -289,7 +290,7 @@ struct ScopedExpr : public Expr {
     explicit ScopedExpr(SrcLocationId location, NodeId inner_expr)
         : Expr{location, NodeKind::ScopedExpr}, inner_expr{inner_expr} {}
 
-    SAME_NODE_T_DEF(NodeKind::ScopedExpr)
+    SAME_NODE_KIND_DEF(NodeKind::ScopedExpr)
 };
 
 struct BinaryOp : public Expr {
@@ -302,7 +303,7 @@ struct BinaryOp : public Expr {
 
     OpKind op() const { return static_cast<OpKind>(node_storage()); }
 
-    SAME_NODE_T_DEF(NodeKind::BinOp)
+    SAME_NODE_KIND_DEF(NodeKind::BinOp)
 };
 
 struct ExplicitCast : public Expr {
@@ -311,7 +312,7 @@ struct ExplicitCast : public Expr {
     explicit ExplicitCast(SrcLocationId location, TypeId target_type, NodeId inner)
         : Expr{location, NodeKind::ExplCast, target_type}, inner{inner} {}
 
-    SAME_NODE_T_DEF(NodeKind::ExplCast)
+    SAME_NODE_KIND_DEF(NodeKind::ExplCast)
 };
 
 struct FunctionCall : public Expr {
@@ -321,7 +322,7 @@ struct FunctionCall : public Expr {
     explicit FunctionCall(SrcLocationId location, SymbolId fn_name, std::vector<NodeId> args)
         : Expr{location, NodeKind::FnCall}, fn_name{fn_name}, args{std::move(args)} {}
 
-    SAME_NODE_T_DEF(NodeKind::FnCall)
+    SAME_NODE_KIND_DEF(NodeKind::FnCall)
 };
 
 struct DeclRefExpr : public Expr {
@@ -330,7 +331,7 @@ struct DeclRefExpr : public Expr {
     explicit DeclRefExpr(SrcLocationId location, NodeId decl)
         : Expr{location, NodeKind::DeclRef}, decl{decl} {}
 
-    SAME_NODE_T_DEF(NodeKind::DeclRef)
+    SAME_NODE_KIND_DEF(NodeKind::DeclRef)
 };
 
 // ===============
@@ -343,7 +344,7 @@ struct CompoundStmt : public Stmt {
     explicit CompoundStmt(SrcLocationId location, std::vector<NodeId> body)
         : Stmt{location, NodeKind::Compound}, body{std::move(body)} {}
 
-    SAME_NODE_T_DEF(NodeKind::Compound)
+    SAME_NODE_KIND_DEF(NodeKind::Compound)
 };
 
 struct ScopedStmt : public Stmt {
@@ -352,7 +353,7 @@ struct ScopedStmt : public Stmt {
     explicit ScopedStmt(SrcLocationId location, NodeId inner_stmt)
         : Stmt{location, NodeKind::ScopedStmt}, inner_stmt{inner_stmt} {}
 
-    SAME_NODE_T_DEF(NodeKind::ScopedStmt)
+    SAME_NODE_KIND_DEF(NodeKind::ScopedStmt)
 };
 
 struct IfStmt : public Stmt {
@@ -367,7 +368,7 @@ struct IfStmt : public Stmt {
           true_block{true_block},
           false_block{false_block} {}
 
-    SAME_NODE_T_DEF(NodeKind::If)
+    SAME_NODE_KIND_DEF(NodeKind::If)
 };
 
 struct ReturnStmt : public Stmt {
@@ -376,21 +377,21 @@ struct ReturnStmt : public Stmt {
     explicit ReturnStmt(SrcLocationId location, NodeId inner)
         : Stmt{location, NodeKind::Return}, inner{inner} {}
 
-    SAME_NODE_T_DEF(NodeKind::Return)
+    SAME_NODE_KIND_DEF(NodeKind::Return)
 };
 
 struct ContinueStmt : public Stmt {
     explicit ContinueStmt(SrcLocationId location)
         : Stmt{location, NodeKind::Continue} {}
 
-    SAME_NODE_T_DEF(NodeKind::Continue)
+    SAME_NODE_KIND_DEF(NodeKind::Continue)
 };
 
 struct BreakStmt : public Stmt {
     explicit BreakStmt(SrcLocationId location)
         : Stmt{location, NodeKind::Break} {}
 
-    SAME_NODE_T_DEF(NodeKind::Break)
+    SAME_NODE_KIND_DEF(NodeKind::Break)
 };
 
 template <typename T>
@@ -407,4 +408,4 @@ concept CDeclTy = std::derived_from<T, Decl>;
 
 } // namespace stc::sir
 
-#undef SAME_NODE_T_DEF
+#undef SAME_NODE_KIND_DEF

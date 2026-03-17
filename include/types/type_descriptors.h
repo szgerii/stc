@@ -25,7 +25,7 @@ class TypePool;
 struct TypeId : public StrongId<uint16_t> {
     using StrongId::StrongId;
 
-    bool constexpr is_null() const { return *this == null_id(); }
+    constexpr bool is_null() const { return *this == null_id(); }
 
     static constexpr TypeId null_id() { return 0U; }
     static constexpr TypeId void_id() { return 1U; }
@@ -52,6 +52,7 @@ struct FloatTD {
     constexpr static std::optional<uint32_t> required_width(Encoding enc) {
         switch (enc) {
             case Encoding::ieee754:
+                // CLEANUP: restrict to 16/32/64/128
                 return std::nullopt;
             case Encoding::bfloat16:
                 return 16;
@@ -166,7 +167,8 @@ struct TypeDescriptor {
 
     template <CTypeDescriptorTy T>
     constexpr const T& as() const {
-        assert(is<T>() && "invalid cast from TypeDescriptor to a CTypeDescriptorTy");
+        assert(is<T>() &&
+               "invalid cast from TypeDescriptor to underlying type descriptor type using as<T>");
         return std::get<T>(_type_data);
     }
 

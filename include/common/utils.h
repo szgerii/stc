@@ -40,12 +40,11 @@ inline std::string indent(size_t level, size_t unit_width) {
     return STC_USE_TABS ? std::string(level, '\t') : std::string(level * unit_width, ' ');
 }
 
-std::nullptr_t report(std::string_view msg, std::string_view prefix = ""sv,
-                      std::ostream& out = std::cerr);
+void report(std::string_view msg, std::string_view prefix = ""sv, std::ostream& out = std::cerr);
 
-std::nullptr_t error(std::string_view msg, std::ostream& out = std::cerr);
-std::nullptr_t warning(std::string_view msg, std::ostream& out = std::cerr);
-std::nullptr_t internal_error(std::string_view msg, std::ostream& out = std::cerr);
+void error(std::string_view msg, std::ostream& out = std::cerr);
+void warning(std::string_view msg, std::ostream& out = std::cerr);
+void internal_error(std::string_view msg, std::ostream& out = std::cerr);
 
 inline std::string dump_label(const std::string& label_str) {
     return std::format("({}):\n", label_str);
@@ -135,6 +134,38 @@ concept CNullableStrongId = CStrongId<T> && requires {
     { T::null_id() } -> std::convertible_to<T>;
 };
 
+// base for AST node ids, where kind also has to be stored in the id
+// most significant 8 bits are for kinds, rest are for the id value
+struct SplitU32Id : public StrongId<uint32_t> {
+    using kind_type = uint8_t;
+
+    static constexpr uint32_t ID_MASK   = 0x00FFFFFF;
+    static constexpr uint32_t KIND_MASK = ~ID_MASK;
+
+    constexpr SplitU32Id() = default;
+    constexpr SplitU32Id(uint32_t id, uint8_t kind)
+        : StrongId{static_cast<uint32_t>(kind) << 24 | id} {
+
+        if ((id & KIND_MASK) != 0)
+            throw std::logic_error{"id value must fit into 24 bits"};
+    };
+
+    uint32_t id_value() const { return value & ID_MASK; }
+    uint8_t kind_value() const { return static_cast<uint8_t>(value >> 24); }
+};
+
+template <typename T>
+concept CNullableSplitId =
+    CNullableStrongId<T> &&
+    std::same_as<std::remove_cvref_t<decltype(T::ID_MASK)>, typename T::id_type> &&
+    std::same_as<std::remove_cvref_t<decltype(T::KIND_MASK)>, typename T::id_type> &&
+    requires (T t) {
+        typename T::kind_type;
+        { T{0U, 0U} } -> std::same_as<T>;
+        { t.id_value() } -> std::same_as<typename T::id_type>;
+        { t.kind_value() } -> std::same_as<typename T::kind_type>;
+    } && std::constructible_from<T, typename T::id_type, typename T::kind_type>;
+
 template <typename... Ts>
 inline constexpr bool dependent_false_v = false;
 
@@ -145,7 +176,6 @@ template <typename... Args>
 constexpr bool no_nullptrs(Args*... args) {
     return ((args != nullptr) && ...);
 }
-
 } // namespace stc
 
 // hash impl for all id types derived from StrongId that "forwards" to the underlying value type

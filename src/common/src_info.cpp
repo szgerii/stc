@@ -13,22 +13,20 @@ void print_locinfo(const SrcFile& file, SrcLocation location, std::ostream& out)
 
 namespace stc {
 
-std::nullptr_t report(const SrcFile& file, SrcLocation location, std::string_view msg,
-                      std::string_view prefix, std::ostream& out) {
+void report(const SrcFile& file, SrcLocation location, std::string_view msg,
+            std::string_view prefix, std::ostream& out) {
     // FEATURE: print code snippet
 
     print_locinfo(file, location, out);
     return report(msg, prefix, out);
 }
 
-std::nullptr_t error(const SrcFile& file, SrcLocation location, std::string_view msg,
-                     std::ostream& out) {
+void error(const SrcFile& file, SrcLocation location, std::string_view msg, std::ostream& out) {
     print_locinfo(file, location, out);
     return error(msg, out);
 }
 
-std::nullptr_t warning(const SrcFile& file, SrcLocation location, std::string_view msg,
-                       std::ostream& out) {
+void warning(const SrcFile& file, SrcLocation location, std::string_view msg, std::ostream& out) {
     print_locinfo(file, location, out);
     return warning(msg, out);
 }
@@ -64,6 +62,15 @@ uint64_t SrcInfoPool::make_file(std::string path) {
     return file_bounds.size() - 1;
 }
 
+SrcLocation SrcInfoPool::get_location(SrcLocationId loc_id) const {
+    SrcLocation* loc = arena.get_ptr<SrcLocation>(loc_id);
+
+    if (loc == nullptr)
+        return SrcLocation::invalid();
+
+    return *loc;
+}
+
 const SrcFile& SrcInfoPool::get_file_for_location(SrcLocationId loc_id) const {
     assert(!file_bounds.empty() &&
            "File pool was empty, its size should be at least 1 (the invalid src file at idx 0)");
@@ -78,6 +85,10 @@ const SrcFile& SrcInfoPool::get_file_for_location(SrcLocationId loc_id) const {
     }
 
     return *last_file;
+}
+
+std::pair<SrcLocation, const SrcFile&> SrcInfoPool::get_loc_and_file(SrcLocationId id) const {
+    return {get_location(id), get_file_for_location(id)};
 }
 
 } // namespace stc

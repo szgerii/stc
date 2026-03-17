@@ -20,7 +20,7 @@ void JLDumper::dec_indent(size_t level) {
 
 // CLEANUP: separate core logic of pre_visits into helper
 
-void JLDumper::pre_visit_id(NodeId node_id) {
+bool JLDumper::pre_visit_id(NodeId node_id) {
     Expr* node = ctx.get_node(node_id);
 
     out << indent() << '[' << std::format("{:p}", static_cast<void*>(node)) << "|"
@@ -32,9 +32,11 @@ void JLDumper::pre_visit_id(NodeId node_id) {
             << ">\n";
     else
         out << indent() << "<?|?>\n";
+
+    return true;
 }
 
-void JLDumper::pre_visit_ptr(Expr* expr) {
+bool JLDumper::pre_visit_ptr(Expr* expr) {
     out << indent() << '[' << std::format("{:p}", static_cast<void*>(expr)) << "|_|"
         << (expr != nullptr ? std::to_string(static_cast<uint8_t>(expr->kind())) : "?") << "]\n";
 
@@ -43,6 +45,8 @@ void JLDumper::pre_visit_ptr(Expr* expr) {
             << ">\n";
     else
         out << indent() << "<?|?>\n";
+
+    return true;
 }
 
 void JLDumper::visit_CompoundExpr(CompoundExpr& cmpd) {

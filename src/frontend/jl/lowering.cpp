@@ -89,7 +89,7 @@ SIRNodeId JLLoweringVisitor::visit_SymbolLiteral([[maybe_unused]] SymbolLiteral&
 }
 
 SIRNodeId JLLoweringVisitor::visit_FunctionCall(FunctionCall& fn_call) {
-    auto* sym_lit = ctx.get_dyn<SymbolLiteral>(fn_call.target_fn);
+    auto* sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(fn_call.target_fn);
 
     if (sym_lit == nullptr)
         return fail("non symbol literal node in FunctionCall's target_fn not caught by sema");

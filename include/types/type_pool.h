@@ -51,14 +51,16 @@ public:
 
     template <CTypeDescriptorTy T>
     bool is_type_of(TypeId id) const {
-        auto* td = static_cast<TypeDescriptor*>(arena.get_ptr(id));
-        assert(td != nullptr);
+        if (id.is_null())
+            return false;
+
+        const auto* td = arena.get_ptr<TypeDescriptor>(id);
+
+        if (td == nullptr)
+            return false;
 
         return td->is<T>();
     }
-
-    const ArenaTy& get_arena() const { return arena; }
-    TypeId size() const { return static_cast<TypeId>(pool.size()); }
 
     [[nodiscard]] static TypeId void_td() { return TypeId::void_id(); }
     [[nodiscard]] TypeId bool_td();

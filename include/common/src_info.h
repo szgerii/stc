@@ -50,12 +50,12 @@ struct SrcLocationId : public StrongId<uint32_t> {
     using StrongId::StrongId;
 };
 
-std::nullptr_t report(const SrcFile& file, SrcLocation location, std::string_view msg,
-                      std::string_view prefix = ""sv, std::ostream& out = std::cerr);
-std::nullptr_t error(const SrcFile& file, SrcLocation location, std::string_view msg,
-                     std::ostream& out = std::cerr);
-std::nullptr_t warning(const SrcFile& file, SrcLocation location, std::string_view msg,
-                       std::ostream& out = std::cerr);
+void report(const SrcFile& file, SrcLocation location, std::string_view msg,
+            std::string_view prefix = ""sv, std::ostream& out = std::cerr);
+void error(const SrcFile& file, SrcLocation location, std::string_view msg,
+           std::ostream& out = std::cerr);
+void warning(const SrcFile& file, SrcLocation location, std::string_view msg,
+             std::ostream& out = std::cerr);
 
 class SrcInfoPool {
 private:
@@ -75,9 +75,11 @@ public:
     [[nodiscard]] SrcLocationId make_location(uint32_t line, uint32_t col);
     [[nodiscard]] uint64_t make_file(std::string path);
 
-    const SrcFile& get_file_for_location(SrcLocationId loc_id) const;
+    [[nodiscard]] SrcLocation get_location(SrcLocationId loc_id) const;
+    [[nodiscard]] const SrcFile& get_file_for_location(SrcLocationId loc_id) const;
 
-    const ArenaTy& get_arena() const { return arena; }
+    [[nodiscard]]
+    std::pair<SrcLocation, const SrcFile&> get_loc_and_file(SrcLocationId loc_id) const;
 
 private:
     ArenaTy arena;

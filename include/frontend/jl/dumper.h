@@ -11,8 +11,8 @@ public:
     explicit JLDumper(const JLCtx& ctx, std::ostream& out)
         : JLVisitor{ctx}, out{out} {}
 
-    void pre_visit_id(NodeId node);
-    void pre_visit_ptr(Expr* expr);
+    bool pre_visit_id(NodeId node);
+    bool pre_visit_ptr(Expr* expr);
 
     // clang-format off
     #define X(type, kind) STC_AST_VISITOR_DECL(void, type)

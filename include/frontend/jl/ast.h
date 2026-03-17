@@ -4,19 +4,19 @@
 #include "common/utils.h"
 #include "types/types.h"
 
-#define SAME_NODE_T_DEF(Kind)                                                                      \
-    static bool same_node_t(const Expr* node) {                                                    \
-        return node->kind() == (Kind);                                                             \
+#define SAME_NODE_KIND_DEF(Kind)                                                                   \
+    static bool same_node_kind(NodeKind kind) {                                                    \
+        return kind == (Kind);                                                                     \
     }
 
 namespace stc::jl {
 
-struct NodeId : StrongId<uint32_t> {
-    using StrongId::StrongId;
+struct NodeId : public SplitU32Id {
+    using SplitU32Id::SplitU32Id;
 
     bool is_null() const { return *this == null_id(); }
 
-    static constexpr NodeId null_id() { return 0U; }
+    static constexpr NodeId null_id() { return NodeId{0U, 0U}; }
 };
 
 using namespace stc::types;
@@ -44,6 +44,8 @@ enum class NodeKind : uint8_t {
 // clang-format on
 
 struct Expr {
+    using kind_type = NodeKind;
+
     SrcLocationId location;
     TypeId type;
     NodeKind _kind;
@@ -58,7 +60,9 @@ struct Expr {
     NodeKind kind() const { return _kind; }
     uint8_t node_storage() const { return _node_storage; }
 
-    static bool same_node_t(const Expr* node) { return node != nullptr; }
+    static bool same_node_kind(NodeKind) { return true; }
+
+    static Expr* safe_cast_to_base(void* node_ptr, NodeId node_id);
 };
 
 struct Stmt : public Expr {
@@ -68,9 +72,8 @@ struct Stmt : public Expr {
     explicit Stmt(SrcLocationId location, NodeKind kind)
         : Expr{location, kind, TypeId::void_id()} {}
 
-    static bool same_node_t(const Expr* node) {
-        return node != nullptr && NodeKind::FirstStmt <= node->kind() &&
-               node->kind() <= NodeKind::LastStmt;
+    static bool same_node_kind(NodeKind kind) {
+        return NodeKind::FirstStmt <= kind && kind <= NodeKind::LastStmt;
     }
 };
 
@@ -83,7 +86,7 @@ struct CompoundExpr : public Expr {
     explicit CompoundExpr(SrcLocationId location, std::initializer_list<NodeId> nodes)
         : CompoundExpr{location, std::vector<NodeId>{nodes}} {}
 
-    SAME_NODE_T_DEF(NodeKind::Compound)
+    SAME_NODE_KIND_DEF(NodeKind::Compound)
 };
 
 struct BoolLiteral : public Expr {
@@ -92,7 +95,7 @@ struct BoolLiteral : public Expr {
 
     bool value() const { return static_cast<bool>(node_storage()); }
 
-    SAME_NODE_T_DEF(NodeKind::BoolLit)
+    SAME_NODE_KIND_DEF(NodeKind::BoolLit)
 };
 
 namespace detail {
@@ -105,7 +108,7 @@ struct IntLiteral : public Expr {
     explicit IntLiteral(SrcLocationId location, T value)
         : Expr{location, Kind}, value{value} {}
 
-    SAME_NODE_T_DEF(Kind)
+    SAME_NODE_KIND_DEF(Kind)
 };
 
 } // namespace detail
@@ -123,7 +126,7 @@ struct UInt128Literal : public Expr {
     explicit UInt128Literal(SrcLocationId location, uint64_t high, uint64_t low)
         : Expr{location, NodeKind::U128Lit}, high{high}, low{low} {}
 
-    SAME_NODE_T_DEF(NodeKind::U128Lit)
+    SAME_NODE_KIND_DEF(NodeKind::U128Lit)
 };
 
 struct Float32Literal : public Expr {
@@ -132,7 +135,7 @@ struct Float32Literal : public Expr {
     explicit Float32Literal(SrcLocationId location, float value)
         : Expr{location, NodeKind::F32Lit}, value{value} {}
 
-    SAME_NODE_T_DEF(NodeKind::F32Lit)
+    SAME_NODE_KIND_DEF(NodeKind::F32Lit)
 };
 
 struct Float64Literal : public Expr {
@@ -141,7 +144,7 @@ struct Float64Literal : public Expr {
     explicit Float64Literal(SrcLocationId location, double value)
         : Expr{location, NodeKind::F64Lit}, value{value} {}
 
-    SAME_NODE_T_DEF(NodeKind::F64Lit)
+    SAME_NODE_KIND_DEF(NodeKind::F64Lit)
 };
 
 struct StringLiteral : public Expr {
@@ -150,7 +153,7 @@ struct StringLiteral : public Expr {
     explicit StringLiteral(SrcLocationId location, std::string value)
         : Expr{location, NodeKind::StrLit}, value{std::move(value)} {}
 
-    SAME_NODE_T_DEF(NodeKind::StrLit)
+    SAME_NODE_KIND_DEF(NodeKind::StrLit)
 };
 
 struct SymbolLiteral : public Expr {
@@ -159,7 +162,7 @@ struct SymbolLiteral : public Expr {
     explicit SymbolLiteral(SrcLocationId location, SymbolId value)
         : Expr{location, NodeKind::SymLit}, value{value} {}
 
-    SAME_NODE_T_DEF(NodeKind::SymLit)
+    SAME_NODE_KIND_DEF(NodeKind::SymLit)
 };
 
 struct FunctionCall : public Expr {
@@ -173,7 +176,7 @@ struct FunctionCall : public Expr {
                           std::initializer_list<NodeId> args)
         : FunctionCall{location, target_fn, std::vector<NodeId>{args}} {}
 
-    SAME_NODE_T_DEF(NodeKind::FnCall)
+    SAME_NODE_KIND_DEF(NodeKind::FnCall)
 };
 
 struct IfExpr : public Expr {
@@ -186,7 +189,7 @@ struct IfExpr : public Expr {
           true_branch{true_branch},
           false_branch{false_branch} {}
 
-    SAME_NODE_T_DEF(NodeKind::If)
+    SAME_NODE_KIND_DEF(NodeKind::If)
 };
 
 struct ReturnStmt : public Stmt {
@@ -195,23 +198,23 @@ struct ReturnStmt : public Stmt {
     explicit ReturnStmt(SrcLocationId location, NodeId inner)
         : Stmt{location, NodeKind::Return}, inner{inner} {}
 
-    SAME_NODE_T_DEF(NodeKind::Return)
+    SAME_NODE_KIND_DEF(NodeKind::Return)
 };
 
 struct ContinueStmt : public Stmt {
     explicit ContinueStmt(SrcLocationId location)
         : Stmt{location, NodeKind::Continue} {}
 
-    SAME_NODE_T_DEF(NodeKind::Continue)
+    SAME_NODE_KIND_DEF(NodeKind::Continue)
 };
 
 struct BreakStmt : public Stmt {
     explicit BreakStmt(SrcLocationId location)
         : Stmt{location, NodeKind::Break} {}
 
-    SAME_NODE_T_DEF(NodeKind::Break)
+    SAME_NODE_KIND_DEF(NodeKind::Break)
 };
 
 }; // namespace stc::jl
 
-#undef SAME_NODE_T_DEF
+#undef SAME_NODE_KIND_DEF

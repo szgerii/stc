@@ -29,15 +29,15 @@ public:
     }
 
 protected:
-    template <typename T, typename U, typename V>
-    explicit GLSLCtx(ASTCtx<T, U, V>&& other, sir::NodeId::id_type node_arena_kb)
+    template <typename T, typename U>
+    explicit GLSLCtx(ASTCtx<T, U>&& other, sir::NodeId::id_type node_arena_kb)
         : SIRCtx{std::move(other), node_arena_kb} {
         init_gl_types();
     }
 
 public:
-    template <typename T, typename U, typename V>
-    [[nodiscard]] static GLSLCtx move_pools_from(ASTCtx<T, U, V>&& other,
+    template <typename T, typename U>
+    [[nodiscard]] static GLSLCtx move_pools_from(ASTCtx<T, U>&& other,
                                                  sir::NodeId::id_type node_arena_kb = 128U) {
         return GLSLCtx{std::move(other), node_arena_kb};
     }
