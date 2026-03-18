@@ -206,6 +206,8 @@ struct Expr : public Stmt {
     TypeId type() const { return static_cast<TypeId::id_type>((_node_storage >> 8) & 0x0000FFFF); }
     uint8_t node_storage() const { return static_cast<uint8_t>(_node_storage & 0xFF); }
 
+    void set_type(TypeId id) { _node_storage = pack_to_u32(id, node_storage()); }
+
     static bool same_node_kind(NodeKind kind) {
         return NodeKind::FirstExpr <= kind && kind <= NodeKind::LastExpr;
     }
@@ -285,10 +287,10 @@ struct StructInstantiation : public Expr {
 };
 
 struct ScopedExpr : public Expr {
-    NodeId inner_expr;
+    NodeId inner;
 
-    explicit ScopedExpr(SrcLocationId location, NodeId inner_expr)
-        : Expr{location, NodeKind::ScopedExpr}, inner_expr{inner_expr} {}
+    explicit ScopedExpr(SrcLocationId location, NodeId inner)
+        : Expr{location, NodeKind::ScopedExpr}, inner{inner} {}
 
     SAME_NODE_KIND_DEF(NodeKind::ScopedExpr)
 };

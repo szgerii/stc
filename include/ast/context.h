@@ -85,7 +85,7 @@ public:
     }
 
     [[nodiscard]] NodeBaseTy* get_node(NodeIdTy id) const {
-        if (id == NodeIdTy::null_id())
+        if (id.is_null())
             return nullptr;
 
         return NodeBaseTy::safe_cast_to_base(node_arena.get_ptr(id.id_value()), id);
@@ -106,7 +106,7 @@ public:
     template <typename T>
     requires CDynCastable<T, NodeBaseTy, node_kind_type>
     bool isa(NodeIdTy id) const {
-        if (id == NodeIdTy::null_id())
+        if (id.is_null())
             return false;
 
         return T::same_node_kind(static_cast<node_kind_type>(id.kind_value()));

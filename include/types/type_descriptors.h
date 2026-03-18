@@ -184,7 +184,7 @@ private:
 };
 static_assert(sizeof(TypeDescriptor) == sizeof(TDVariantType));
 
-std::string to_string(const TypeDescriptor& td, const TypePool& type_pool,
+std::string to_string(const TypeDescriptor& type, const TypePool& type_pool,
                       const SymbolPool& sym_pool);
 std::string to_string(TypeId id, const TypePool& type_pool, const SymbolPool& sym_pool);
 

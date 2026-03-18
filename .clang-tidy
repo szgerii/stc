@@ -14,7 +14,9 @@ Checks: >
   -readability-braces-around-statements,
   -cppcoreguidelines-macro-usage,
   -readability-redundant-member-init,
-  -cppcoreguidelines-avoid-do-while
+  -cppcoreguidelines-avoid-do-while,
+  -readability-avoid-return-with-void-value,
+  -modernize-use-ranges
 
 CheckOptions:
   readability-magic-numbers.IgnorePowersOf2IntegerValues: true

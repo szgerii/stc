@@ -47,7 +47,11 @@ SIRNodeId JLLoweringVisitor::visit_CompoundExpr(CompoundExpr& cmpd) {
 }
 
 SIRNodeId JLLoweringVisitor::visit_BoolLiteral(BoolLiteral& bool_lit) {
-    return emplace_node<sir::BoolLiteral>(bool_lit.location, bool_lit.value());
+    SIRNodeId id = emplace_node<sir::BoolLiteral>(bool_lit.location, bool_lit.value());
+    auto* bl     = sir_ctx.get_and_dyn_cast<sir::BoolLiteral>(id);
+    bl->set_type(sir_ctx.type_pool.bool_td());
+
+    return id;
 }
 
 #define GEN_INT_LITERAL_VISITOR(type, width, is_signed)                                            \

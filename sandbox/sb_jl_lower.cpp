@@ -4,6 +4,7 @@
 #include <frontend/jl/lowering.h>
 #include <iostream>
 #include <sir/dumper.h>
+#include <sir/sema.h>
 
 // NOTE: main() can throw right now
 int main() { // NOLINT
@@ -63,22 +64,31 @@ int main() { // NOLINT
         return 1;
     }
 
-    std::cout << "\n" << "<== Lowered Shader IR ==>\n\n";
-
     auto glsl_ctx = glsl::GLSLCtx(std::move(lowering_vis.sir_ctx));
+
+    std::cout << "\n<== Lowered Shader IR ==>\n\n";
 
     sir::SIRDumper sir_dumper{glsl_ctx, std::cout};
     sir_dumper.visit(base_id);
+
+    std::cout << "\n<== SIR Semantic Verification ==>\n\n";
+    sir::SIRSemaVisitor sema_vis{glsl_ctx};
+
+    sema_vis.visit(base_id);
+
+    if (!sema_vis.success()) {
+        std::cerr << "SIR semantic verification failed\n";
+    }
 
     glsl::GLSLCodeGenVisitor code_gen_vis{glsl_ctx};
     code_gen_vis.visit(base_id);
 
     if (!code_gen_vis.successful()) {
-        std::cerr << "SIR code gen failed\n";
+        std::cerr << "GLSL code gen failed\n";
         return 1;
     }
 
-    std::cout << "\n" << "<== Generated GLSL code ==>\n\n";
+    std::cout << "\n<== Generated GLSL code ==>\n\n";
     std::cout << code_gen_vis.result();
 
     std::cout.flush();

@@ -130,8 +130,9 @@ concept CStrongId = requires {
 } && std::derived_from<T, StrongId<typename T::id_type>> && CHashable<typename T::id_type>;
 
 template <typename T>
-concept CNullableStrongId = CStrongId<T> && requires {
+concept CNullableStrongId = CStrongId<T> && requires (T t) {
     { T::null_id() } -> std::convertible_to<T>;
+    { t.is_null() } -> std::same_as<bool>;
 };
 
 // base for AST node ids, where kind also has to be stored in the id

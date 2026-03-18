@@ -12,7 +12,7 @@ Expr* Expr::safe_cast_to_base(void* node_ptr, NodeId node_id) {
 
         #define X(type, kind)                                                                              \
             case (NodeKind::kind):                                                                         \
-                return static_cast<Expr*>(static_cast<type*>(node_ptr));
+                return static_cast<Expr*>(static_cast<type*>(node_ptr)); // NOLINT(bugprone-macro-parentheses)
 
             #include "frontend/jl/node_defs/all_nodes.def"
         #undef X

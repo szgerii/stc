@@ -58,6 +58,11 @@ bool SIRDumper::pre_visit_id(NodeId node_id) {
         << node_id << '|'
         << (node != nullptr ? std::to_string(static_cast<uint8_t>(node->kind())) : "?") << "]\n";
 
+    Expr* expr = ctx.get_and_dyn_cast<Expr>(node_id);
+    if (expr != nullptr)
+        out << indent() << "<" << type_str(expr->type()) << '|' << std::to_string(expr->type())
+            << ">\n";
+
     return true;
 }
 
@@ -178,7 +183,7 @@ void SIRDumper::visit_ScopedExpr(ScopedExpr& scoped_expr) {
     out << indent() << "ScopedExpr:\n";
 
     inc_indent();
-    visit(scoped_expr.inner_expr);
+    visit(scoped_expr.inner);
     dec_indent();
 }
 
