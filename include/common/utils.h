@@ -202,6 +202,16 @@ struct VectorHash {
     }
 };
 
+// for heterogenous lookup for string/string_view (avoids implicit string alloc for string_views)
+// https://www.cppstories.com/2021/heterogeneous-access-cpp20/
+struct TransparentStringHash {
+    using is_transparent = void;
+
+    size_t operator()(const std::string& str) const { return std::hash<std::string>{}(str); }
+    size_t operator()(std::string_view sv) const { return std::hash<std::string_view>{}(sv); }
+    size_t operator()(const char* c_str) const { return std::hash<std::string_view>{}(c_str); }
+};
+
 } // namespace stc
 
 // hash impl for all id types derived from StrongId that "forwards" to the underlying value type

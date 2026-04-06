@@ -1,6 +1,6 @@
 #pragma once
 
-#include "julia_wrapper.h"
+#include "julia_guard.h"
 
 #include "base.h"
 

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "julia_wrapper.h"
+#include "julia_guard.h"
 
-namespace stc::jl {
+namespace stc::jl::rt {
 
-struct JLParserSymbolCache {
+struct JuliaSymbolCache {
     // keywords
     jl_sym_t* block      = jl_symbol("block");
     jl_sym_t* global     = jl_symbol("global");
@@ -50,16 +50,4 @@ struct JLParserSymbolCache {
     jl_sym_t* Nothing = jl_symbol("Nothing");
 };
 
-struct JLParserTypeCache {
-    jl_datatype_t* uint128;
-
-    explicit JLParserTypeCache() {
-        uint128 =
-            reinterpret_cast<jl_datatype_t*>(jl_get_global(jl_core_module, jl_symbol("UInt128")));
-
-        assert(uint128 != nullptr &&
-               "failed to load uint128 datatype from julia through the core module");
-    }
-};
-
-} // namespace stc::jl
+} // namespace stc::jl::rt

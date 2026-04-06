@@ -4,7 +4,7 @@
 #include <optional>
 
 #include "common/bump_arena.h"
-#include "julia_wrapper.h"
+#include "julia_guard.h"
 
 namespace stc::jl {
 

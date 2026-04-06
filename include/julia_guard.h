@@ -3,11 +3,20 @@
 // MSVC fails to compile without NOMINMAX because of stuff like std::numeric_limits<T>::max()
 // getting recognized as a macro invocation. However, mingw gcc (for example) already defines
 // NOMINMAX internally, so it will start spitting out macro redef warnings for NOMINMAX, if it's
-// defined here.
+// redefined here.
 
 #ifndef NOMINMAX
 #define NOMINMAX
 #define STC_DEFINED_NOMINMAX
+#endif
+
+// sanity check #1
+#ifdef max
+static_assert(false, "max macro defined pre julia.h include");
+#endif
+
+#ifdef min
+static_assert(false, "min macro defined pre julia.h include");
 #endif
 
 #include <julia.h>
@@ -20,11 +29,11 @@
 #undef STC_DEFINED_NOMINMAX
 #endif
 
-// sanity check
+// sanity check #2
 #ifdef max
-static_assert(false, "max macro defined");
+static_assert(false, "max macro defined post julia.h include");
 #endif
 
 #ifdef min
-static_assert(false, "min macro defined");
+static_assert(false, "min macro defined post julia.h include");
 #endif

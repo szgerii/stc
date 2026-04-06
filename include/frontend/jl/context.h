@@ -4,6 +4,7 @@
 #include "common/literals.h"
 #include "frontend/jl/ast.h"
 #include "frontend/jl/module_pool.h"
+#include "frontend/jl/rt/env.h"
 
 namespace stc::jl {
 
@@ -18,6 +19,8 @@ class JLCtx : public ASTCtx<NodeId, Expr> {
     using Base = ASTCtx<NodeId, Expr>;
 
 public:
+    rt::JuliaRTEnv jl_env{};
+
     ModulePool module_pool;
 
     // clang-format off

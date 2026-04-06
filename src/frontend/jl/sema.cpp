@@ -2,7 +2,7 @@
 #include "base.h"
 #include "frontend/jl/dumper.h"
 #include "frontend/jl/sema.h"
-#include "julia_wrapper.h"
+#include "julia_guard.h"
 
 namespace {
 

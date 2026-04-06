@@ -1,9 +1,9 @@
 #pragma once
 
+#include "julia_guard.h"
+
 #include "frontend/jl/ast.h"
 #include "frontend/jl/context.h"
-#include "frontend/jl/parser_caches.h"
-#include "julia_wrapper.h"
 #include "sir/context.h"
 
 #define PARSER_DECL(name) NodeId parse_##name(jl_expr_t* expr, size_t nargs)
@@ -12,16 +12,14 @@ namespace stc::jl {
 
 class JLParser {
     JLCtx ctx;
-
-    JLParserTypeCache type_cache{};
-    JLParserSymbolCache sym_cache{};
+    rt::JuliaSymbolCache& sym_cache;
 
     SrcLocationId cur_loc;
     bool _success = true;
 
 public:
     explicit JLParser()
-        : ctx{} {
+        : ctx{}, sym_cache{ctx.jl_env.symbol_cache} {
 
         std::ignore = ctx.src_info_pool.get_file("dummy file");
         cur_loc     = ctx.src_info_pool.get_location(1, 1);
