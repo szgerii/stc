@@ -18,6 +18,8 @@ class JLParser {
     bool _success = true;
 
 public:
+    std::optional<std::string> fallback_file = std::nullopt;
+
     explicit JLParser()
         : ctx{}, sym_cache{ctx.jl_env.symbol_cache} {
 

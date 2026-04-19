@@ -52,6 +52,9 @@ struct JuliaSymbolCache {
     jl_sym_t* Symbol  = jl_symbol("Symbol");
     jl_sym_t* Nothing = jl_symbol("Nothing");
     jl_sym_t* Vector  = jl_symbol("Vector");
+
+    // misc
+    jl_sym_t* none = jl_symbol("none"); // for LineNumberNode-s without associated files
 };
 
 } // namespace stc::jl::rt

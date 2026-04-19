@@ -112,9 +112,14 @@ NodeId JLParser::parse(jl_value_t* node) {
 
         if (jl_is_symbol(file_v)) {
             auto* file_sym = reinterpret_cast<jl_sym_t*>(file_v);
-            std::ignore    = ctx.src_info_pool.get_file(jl_symbol_name(file_sym));
+
+            std::string file_name = (file_sym != sym_cache.none || !fallback_file.has_value())
+                                        ? jl_symbol_name(file_sym)
+                                        : *fallback_file;
+
+            std::ignore = ctx.src_info_pool.get_file(file_name);
         } else {
-            std::ignore = ctx.src_info_pool.get_file("<unknown>");
+            std::ignore = ctx.src_info_pool.get_file(fallback_file.value_or("<unknown file>"));
         }
 
         cur_loc = ctx.src_info_pool.get_location(line, 1U);
@@ -151,12 +156,18 @@ NodeId JLParser::parse(jl_value_t* node) {
         return emplace_node<DeclRefExpr>(cur_loc, glob_ref);
     }
 
-    // quote nodes are simply unwrapped and parsed
+    // quotenode-s are inserted as raw SymbolLiteral nodes
     if (jl_is_quotenode(node)) {
         // ! value::Any
         jl_value_t* inner_v = safe_fieldref(node, 0, "value");
 
-        return parse(inner_v);
+        if (!jl_is_symbol(inner_v))
+            return error("QuoteNode-s not wrapping Symbol-s are currently not supported");
+
+        auto* sym = reinterpret_cast<jl_sym_t*>(inner_v);
+
+        SymbolId sym_id = ctx.sym_pool.get_id(jl_symbol_name(sym));
+        return emplace_node<SymbolLiteral>(cur_loc, sym_id);
     }
 
     if (jl_is_expr(node))

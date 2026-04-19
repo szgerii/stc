@@ -358,9 +358,11 @@ bool JLSema::check(Expr& expr, TypeId checked_type, bool allow_pretyped) {
         fail("nodes representing strings are not allowed", expr);
 
     if (!check_type_against(actual_type, checked_type)) {
-        fail(std::format("type mismatch during type checking: expected {}, got {}",
-                         type_str(checked_type), type_str(actual_type)),
-             expr);
+        // if actual_type is null, that's mostly an already reported error
+        if (_success || !actual_type.is_null())
+            fail(std::format("type mismatch during type checking: expected {}, got {}",
+                             type_str(checked_type), type_str(actual_type)),
+                 expr);
 
         return false;
     }
@@ -1345,8 +1347,9 @@ TypeId JLSema::visit_SymbolLiteral(SymbolLiteral& sym) {
     if (visiting_indexer)
         return ctx.jl_Symbol_t();
 
-    return internal_error("sema pass reached a symbol literal leaf node, which should never happen",
-                          sym);
+    return fail("symbol literal in unexpected position (only supported inside swizzle "
+                "expressions)",
+                sym);
 }
 
 TypeId JLSema::visit_ModuleLookup(ModuleLookup& ml) {
@@ -1472,6 +1475,11 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
         dre.decl = ctx.emplace_node<OpaqueFunction>(dre.location, fn_name, jl_fn).first;
         infer(dre.decl);
 
+        if (ctx.config.warn_on_jl_sema_query)
+            warn(std::format("had to resolve function reference through julia for symbol '{}'",
+                             ctx.get_sym(fn_name)),
+                 dre);
+
         return tpool.func_td(fn_name);
     }
 
@@ -1497,6 +1505,8 @@ TypeId JLSema::visit_Assignment(Assignment& assign) {
 
             if (decl_id.is_null()) {
                 TypeId inf_type = infer(assign.value);
+                if (inf_type.is_null())
+                    return TypeId::null_id();
 
                 auto maybe_bt = binding_of(sym->value);
 
@@ -1557,14 +1567,19 @@ TypeId JLSema::visit_Assignment(Assignment& assign) {
 
 // TODO: add jl dumps for types
 // TODO: print inferred sig
-TypeId JLSema::ret_type_of_call(jl_function_t* fn, const std::vector<TypeId>& arg_types,
-                                const Expr& base_expr) {
+TypeId JLSema::ret_type_of_jl_call(jl_function_t* fn, const std::vector<TypeId>& arg_types,
+                                   const Expr& base_expr) {
     assert(fn != nullptr);
 
     // only actually alloc and init string if needed for an error msg
     auto error_suffix = LazyInit{[&]() -> std::string {
         return std::format("(in call to function '{}')", get_jl_fn_name(fn));
     }};
+
+    if (ctx.config.warn_on_jl_sema_query)
+        warn(std::format("had to resolve function call's return type through julia {}",
+                         error_suffix.get()),
+             base_expr);
 
     jl_value_t* type_tuple  = nullptr;
     jl_value_t* res_jl_type = nullptr;
@@ -1807,8 +1822,8 @@ TypeId JLSema::visit_FunctionCall(FunctionCall& fn_call) {
 
     assert(opaq_fn != nullptr);
 
-    // ret_type_of_call should already print any error necessary
-    return ret_type_of_call(opaq_fn->jl_function, arg_types, fn_call);
+    // ret_type_of_jl_call should already print any error necessary
+    return ret_type_of_jl_call(opaq_fn->jl_function, arg_types, fn_call);
 }
 
 TypeId JLSema::visit_IfExpr(IfExpr& if_) {

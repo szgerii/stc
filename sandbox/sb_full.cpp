@@ -10,9 +10,24 @@ JULIA_DEFINE_FAST_TLS
 #include <sir/sema.h>
 
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+
+std::filesystem::path tail_from_cwd(const std::filesystem::path& p) {
+    namespace fs = std::filesystem;
+
+    fs::path abs = fs::absolute(p);
+    fs::path cwd = fs::current_path();
+
+    fs::path rel = abs.lexically_relative(cwd);
+
+    if (!rel.empty())
+        return rel;
+
+    return abs;
+}
 
 std::string format_duration(std::chrono::nanoseconds dur) {
     using namespace std::chrono;
@@ -25,8 +40,8 @@ std::string format_duration(std::chrono::nanoseconds dur) {
                : std::format("{:.0f} us", exact_us.count());
 }
 
-int transpile(std::string_view code, stc::TranspilerConfig config, bool dump_parsed, bool dump_sema,
-              bool dump_lowered, bool write_to_file) {
+int transpile(std::string_view code, std::string file_path, stc::TranspilerConfig config,
+              bool dump_parsed, bool dump_sema, bool dump_lowered, bool write_to_file) {
     using namespace stc;
     using namespace stc::jl;
     using clock = std::chrono::steady_clock;
@@ -34,6 +49,8 @@ int transpile(std::string_view code, stc::TranspilerConfig config, bool dump_par
     auto start = clock::now();
 
     JLParser parser{std::move(config)};
+    parser.fallback_file = file_path;
+
     NodeId jl_ast = parser.parse_code(code);
 
     if (!parser.success()) {
@@ -174,6 +191,8 @@ int main(int argc, char* argv[]) {
             dump_lowered = true;
         else if (arg == "--dump-scopes")
             config.dump_scopes = true;
+        else if (arg == "-Wjl_query")
+            config.warn_on_jl_sema_query = true;
         else if (arg == "--errdump-none")
             err_dump = DumpVerbosity::None;
         else if (arg == "--errdump-partial")
@@ -204,7 +223,13 @@ int main(int argc, char* argv[]) {
     config.err_dump_verbosity = err_dump;
 
     // ! TODO: remove
-    std::ifstream file(argc > 1 ? argv[1] : "C:\\Users\\szucs\\szakdoga\\stc\\test.jl");
+    std::string path = argc > 1 ? argv[1] : "C:\\Users\\szucs\\szakdoga\\stc\\test.jl";
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Couldn't open input file at '" << path << "'\n";
+        return 1;
+    }
+
     std::stringstream code_stream;
     code_stream << file.rdbuf();
     std::string code{code_stream.str()};
@@ -233,11 +258,11 @@ int main(int argc, char* argv[]) {
                                      i + 1);
         }
 
-        int result =
-            transpile(code, config, dump_parsed, dump_sema, dump_lowered, i + 1 == ite_count);
+        int result = transpile(code, tail_from_cwd(path).string(), config, dump_parsed, dump_sema,
+                               dump_lowered, i + 1 == ite_count);
 
         if (result != 0) {
-            std::cout << "\nAn error occured during transpilation";
+            std::cout << "\nAn error occured during transpilation\n";
             std::cout.flush();
             return result;
         }

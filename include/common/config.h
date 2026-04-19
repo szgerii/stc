@@ -15,6 +15,7 @@ struct TranspilerConfig {
     DumpVerbosity err_dump_verbosity = DumpVerbosity::None;
     bool use_tabs                    = false;
     bool dump_scopes                 = false;
+    bool warn_on_jl_sema_query       = false;
 };
 
 } // namespace stc
