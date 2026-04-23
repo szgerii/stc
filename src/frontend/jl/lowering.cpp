@@ -59,7 +59,6 @@ SIRNodeId JLLoweringVisitor::visit_ptr(Expr* node) {
     return this->dispatch_wrapper(node);
 }
 
-// TODO: explicitly defined main
 SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
     auto* global_cmpd = ctx.get_and_dyn_cast<CompoundExpr>(global_cmpd_id);
     if (global_cmpd == nullptr)
@@ -71,13 +70,18 @@ SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
     // lift global var decls (including implicit ones) and method decls to the top
     std::vector<NodeId> prepended_exprs{};
     bool encountered_real_body = false;
+    NodeId explicit_main       = NodeId::null_id(); // TODO: error on redecl
     size_t struct_count        = 0;
     for (size_t i = 0; i < body.size();) {
         NodeId expr = body[i];
 
         if (ctx.isa<MethodDecl>(expr)) {
-            prepended_exprs.emplace_back(expr);
             body.erase(body.begin() + i);
+
+            if (sir_ctx.get_sym(ctx.get_and_dyn_cast<MethodDecl>(expr)->identifier) != "main")
+                prepended_exprs.emplace_back(expr);
+            else
+                explicit_main = expr;
 
             continue;
         }
@@ -142,36 +146,33 @@ SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
 
     body.insert(body.begin(), prepended_exprs.begin(), prepended_exprs.end());
 
-    // wrap rest of body in a main function
-    size_t body_first_idx = prepended_exprs.size();
-    // while (body_first_idx < body.size() && ctx.isa<MethodDecl>(body[body_first_idx]))
-    //     body_first_idx++;
+    if (explicit_main.is_null()) {
+        // wrap rest of body in a main function
+        size_t body_first_idx = prepended_exprs.size();
 
-    // if (body_first_idx >= body.size())
-    //     return visit(global_cmpd);
+        std::vector<NodeId> main_body{};
 
-    std::vector<NodeId> main_body{};
+        if (body_first_idx < body.size()) {
+            main_body.reserve(body.size() - body_first_idx);
+            main_body.insert(main_body.end(), body.begin() + body_first_idx, body.end());
+        }
 
-    if (body_first_idx < body.size()) {
-        main_body.reserve(body.size() - body_first_idx);
-        main_body.insert(main_body.end(), body.begin() + body_first_idx, body.end());
+        body.resize(body_first_idx); // leave one for the main method's decl
+
+        SrcLocationId main_loc = !main_body.empty()
+                                     ? ctx.get_node(main_body.back())->location
+                                     : (!body.empty() ? ctx.get_node(body.back())->location
+                                                      : ctx.src_info_pool.get_location(1, 1));
+
+        NodeId main_cmpd = ctx.emplace_node<CompoundExpr>(main_loc, std::move(main_body)).first;
+
+        explicit_main =
+            ctx.emplace_node<MethodDecl>(main_loc, sir_ctx.sym_pool.get_id("main"),
+                                         ctx.jl_Nothing_t(), std::vector<NodeId>{}, main_cmpd)
+                .first;
     }
 
-    body.resize(body_first_idx); // leave one for the main method's decl
-
-    SrcLocationId main_loc = !main_body.empty()
-                                 ? ctx.get_node(main_body.back())->location
-                                 : (!body.empty() ? ctx.get_node(body.back())->location
-                                                  : ctx.src_info_pool.get_location(1, 1));
-
-    NodeId main_cmpd = ctx.emplace_node<CompoundExpr>(main_loc, std::move(main_body)).first;
-
-    NodeId main_method =
-        ctx.emplace_node<MethodDecl>(main_loc, sir_ctx.sym_pool.get_id("main"), ctx.jl_Nothing_t(),
-                                     std::vector<NodeId>{}, main_cmpd)
-            .first;
-
-    body.emplace_back(main_method);
+    body.emplace_back(explicit_main);
 
     return visit(global_cmpd);
 }
@@ -182,7 +183,8 @@ SIRNodeId JLLoweringVisitor::visit_VarDecl(VarDecl& var) {
     SIRNodeId init =
         !var.initializer.is_null() ? visit_and_check(var.initializer) : SIRNodeId::null_id();
 
-    return emplace_decl<sir::VarDecl>(&var, var.location, var.identifier, var.type, init);
+    return emplace_decl<sir::VarDecl>(&var, var.location, var.identifier, var.type, var.qualifiers,
+                                      init);
 }
 
 SIRNodeId JLLoweringVisitor::visit_MethodDecl(MethodDecl& method) {
@@ -216,7 +218,8 @@ SIRNodeId JLLoweringVisitor::visit_MethodDecl(MethodDecl& method) {
     in_method = prev_in_method;
 
     return emplace_decl<sir::FunctionDecl>(&method, method.location, method.identifier,
-                                           method.ret_type, std::move(params), scoped_body);
+                                           method.ret_type, std::move(params), method.qualifiers,
+                                           scoped_body);
 }
 
 SIRNodeId JLLoweringVisitor::visit_FunctionDecl(FunctionDecl& fn) {
@@ -235,7 +238,8 @@ SIRNodeId JLLoweringVisitor::visit_ParamDecl(ParamDecl& param) {
 
     swap_lower_type(param.annot_type);
 
-    return emplace_decl<sir::ParamDecl>(&param, param.location, param.identifier, param.type);
+    return emplace_decl<sir::ParamDecl>(&param, param.location, param.identifier, param.type,
+                                        param.qualifiers);
 }
 
 SIRNodeId JLLoweringVisitor::visit_OpaqueFunction(OpaqueFunction& opaq_fn) {
@@ -255,6 +259,11 @@ SIRNodeId JLLoweringVisitor::visit_StructDecl(StructDecl& struct_) {
         return fail(std::format("empty structs are not allowed (in definition of struct '{}')",
                                 sir_ctx.get_sym(struct_.identifier)));
 
+    if (!struct_.qualifiers.is_null())
+        return fail(std::format(
+            "qualifiers on struct definitions are not allowed (in definition of struct '{}')",
+            sir_ctx.get_sym(struct_.identifier)));
+
     std::vector<SIRNodeId> fields{};
     fields.reserve(struct_.field_decls.size());
 
@@ -266,7 +275,8 @@ SIRNodeId JLLoweringVisitor::visit_StructDecl(StructDecl& struct_) {
 }
 
 SIRNodeId JLLoweringVisitor::visit_FieldDecl(FieldDecl& field) {
-    return emplace_decl<sir::FieldDecl>(&field, field.location, field.identifier, field.type);
+    return emplace_decl<sir::FieldDecl>(&field, field.location, field.identifier, field.type,
+                                        field.qualifiers);
 }
 
 SIRNodeId JLLoweringVisitor::visit_CompoundExpr(CompoundExpr& cmpd) {

@@ -4,7 +4,8 @@
 #include "common/src_info.h"
 #include "common/utils.h"
 #include "frontend/jl/module_pool.h"
-#include "types/types.h"
+#include "types/qualifier_pool.h"
+#include "types/type_pool.h"
 
 #define SAME_NODE_KIND_DEF(Kind)                                                                   \
     static bool same_node_kind(NodeKind kind) {                                                    \
@@ -129,15 +130,17 @@ struct Stmt : public Expr {
 
 struct Decl : public Expr {
     SymbolId identifier;
+    QualId qualifiers;
 
-    explicit Decl(SrcLocationId location, NodeKind kind, SymbolId identifier, uint8_t node_storage)
-        : Expr{location, kind, node_storage}, identifier{identifier} {
+    explicit Decl(SrcLocationId location, NodeKind kind, SymbolId identifier, uint8_t node_storage,
+                  TypeId type = TypeId::null_id(), QualId qualifiers = QualId::null_id())
+        : Expr{location, kind, type, node_storage}, identifier{identifier}, qualifiers{qualifiers} {
         ASSERT_NOT_NULL(identifier);
     }
 
     explicit Decl(SrcLocationId location, NodeKind kind, SymbolId identifier,
-                  TypeId type = TypeId::null_id())
-        : Expr{location, kind, type}, identifier{identifier} {
+                  TypeId type = TypeId::null_id(), QualId qualifiers = QualId::null_id())
+        : Expr{location, kind, type}, identifier{identifier}, qualifiers{qualifiers} {
         ASSERT_NOT_NULL(identifier);
     }
 
@@ -155,17 +158,33 @@ struct VarDecl : public Decl {
     NodeId initializer;
 
     explicit VarDecl(SrcLocationId location, SymbolId identifier, TypeId annot_type,
-                     MaybeScopeType scope, NodeId initializer = NodeId::null_id())
-        : Decl{location, NodeKind::VarDecl, identifier, static_cast<uint8_t>(scope)},
+                     MaybeScopeType scope, NodeId initializer = NodeId::null_id(),
+                     bool is_builtin = false)
+        : Decl{location, NodeKind::VarDecl, identifier,
+               static_cast<uint8_t>(scope) | static_cast<uint8_t>(is_builtin << 7)},
           annot_type{annot_type},
           initializer{initializer} {}
 
     explicit VarDecl(SrcLocationId location, SymbolId identifier, TypeId annot_type,
-                     ScopeType scope, NodeId initializer = NodeId::null_id())
-        : VarDecl{location, identifier, annot_type, st_to_mst(scope), initializer} {}
+                     ScopeType scope, NodeId initializer = NodeId::null_id(),
+                     bool is_builtin = false)
+        : VarDecl{location, identifier, annot_type, st_to_mst(scope), initializer, is_builtin} {}
 
-    MaybeScopeType scope() const { return static_cast<MaybeScopeType>(_node_storage); }
-    void set_scope(MaybeScopeType value) { _node_storage = static_cast<uint8_t>(value); }
+    MaybeScopeType scope() const {
+        return static_cast<MaybeScopeType>(0b01111111 & node_storage());
+    }
+
+    void set_scope(MaybeScopeType value) {
+        _node_storage = (_node_storage & (1U << 7)) | static_cast<uint8_t>(value);
+    }
+
+    bool is_builtin() const { return static_cast<bool>(node_storage() >> 7); }
+    void set_is_builtin(bool value) {
+        if (value)
+            _node_storage |= (1U << 7);
+        else
+            _node_storage &= ~(1U << 7);
+    }
 
     SAME_NODE_KIND_DEF(NodeKind::VarDecl)
 };

@@ -20,3 +20,6 @@ vs_install/
 /test.jl
 /tmp.jl
 /out.comp
+
+# imgui
+imgui.ini

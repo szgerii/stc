@@ -10,7 +10,8 @@
 #include "base.h"
 #include "common/src_info.h"
 #include "common/utils.h"
-#include "types/types.h"
+#include "types/qualifier_pool.h"
+#include "types/type_pool.h"
 
 #define SAME_NODE_KIND_DEF(Kind)                                                                   \
     static bool same_node_kind(NodeKind kind) {                                                    \
@@ -100,16 +101,21 @@ struct NodeBase {
 };
 
 struct Decl : public NodeBase {
-    // CLEANUP: better packing for decl
     SymbolId identifier;
 
-    explicit Decl(SrcLocationId location, NodeKind kind, SymbolId identifier)
-        : NodeBase{location, kind}, identifier{identifier} {}
+    static_assert(std::same_as<QualId::id_type, uint16_t>);
+
+    explicit Decl(SrcLocationId location, NodeKind kind, SymbolId identifier, QualId qualifiers,
+                  uint8_t node_storage = 0U)
+        : NodeBase{location, kind, (static_cast<uint32_t>(qualifiers) << 8) | node_storage},
+          identifier{identifier} {}
 
     Decl(const Decl&)                = default;
     Decl& operator=(const Decl&)     = default;
     Decl(Decl&&) noexcept            = default;
     Decl& operator=(Decl&&) noexcept = default;
+
+    QualId qualifiers() const { return QualId{static_cast<uint16_t>(node_storage() >> 8)}; }
 
     static bool same_node_kind(NodeKind kind) {
         return NodeKind::FirstDecl <= kind && kind <= NodeKind::LastDecl;
@@ -139,8 +145,10 @@ struct VarDecl : public Decl {
     NodeId initializer;
 
     explicit VarDecl(SrcLocationId location, SymbolId var_name, TypeId type,
-                     NodeId initializer = NodeId::null_id())
-        : Decl{location, NodeKind::VarDecl, var_name}, type{type}, initializer{initializer} {}
+                     QualId qualifiers = QualId::null_id(), NodeId initializer = NodeId::null_id())
+        : Decl{location, NodeKind::VarDecl, var_name, qualifiers},
+          type{type},
+          initializer{initializer} {}
 
     SAME_NODE_KIND_DEF(NodeKind::VarDecl)
 };
@@ -151,8 +159,9 @@ struct FunctionDecl : public Decl {
     NodeId body;
 
     explicit FunctionDecl(SrcLocationId location, SymbolId fn_name, TypeId return_type,
-                          std::vector<NodeId> param_decls, NodeId body = NodeId::null_id())
-        : Decl{location, NodeKind::FuncDecl, fn_name},
+                          std::vector<NodeId> param_decls, QualId qualifiers = QualId::null_id(),
+                          NodeId body = NodeId::null_id())
+        : Decl{location, NodeKind::FuncDecl, fn_name, qualifiers},
           return_type{return_type},
           param_decls{std::move(param_decls)},
           body{body} {}
@@ -163,8 +172,9 @@ struct FunctionDecl : public Decl {
 struct ParamDecl : public Decl {
     TypeId param_type;
 
-    explicit ParamDecl(SrcLocationId location, SymbolId param_name, TypeId type)
-        : Decl{location, NodeKind::ParamDecl, param_name}, param_type{type} {}
+    explicit ParamDecl(SrcLocationId location, SymbolId param_name, TypeId type,
+                       QualId qualifiers = QualId::null_id())
+        : Decl{location, NodeKind::ParamDecl, param_name, qualifiers}, param_type{type} {}
 
     SAME_NODE_KIND_DEF(NodeKind::ParamDecl)
 };
@@ -174,7 +184,8 @@ struct StructDecl : public Decl {
 
     explicit StructDecl(SrcLocationId location, SymbolId struct_name,
                         std::vector<NodeId> field_decls)
-        : Decl{location, NodeKind::StructDecl, struct_name}, field_decls{std::move(field_decls)} {}
+        : Decl{location, NodeKind::StructDecl, struct_name, QualId::null_id()},
+          field_decls{std::move(field_decls)} {}
 
     SAME_NODE_KIND_DEF(NodeKind::StructDecl)
 };
@@ -182,8 +193,9 @@ struct StructDecl : public Decl {
 struct FieldDecl : public Decl {
     TypeId field_type;
 
-    explicit FieldDecl(SrcLocationId location, SymbolId field_name, TypeId field_type)
-        : Decl{location, NodeKind::FieldDecl, field_name}, field_type{field_type} {}
+    explicit FieldDecl(SrcLocationId location, SymbolId field_name, TypeId field_type,
+                       QualId qualifiers = QualId::null_id())
+        : Decl{location, NodeKind::FieldDecl, field_name, qualifiers}, field_type{field_type} {}
 
     SAME_NODE_KIND_DEF(NodeKind::FieldDecl)
 };

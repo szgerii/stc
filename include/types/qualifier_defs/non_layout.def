@@ -1,0 +1,36 @@
+#include "common/x_macros/begin_def.inc"
+
+STC_X_FIRST(const, Storage, 5)
+STC_X(in, Storage, 4)
+STC_X(out, Storage, 4)
+STC_X(inout, Storage, 5)
+STC_X(attribute, Storage, 5)
+STC_X(uniform, Storage, 5)
+STC_X(varying, Storage, 5)
+STC_X(buffer, Storage, 5)
+STC_X(shared, Storage, 5)
+
+STC_X(centroid, AuxStorage, 3)
+STC_X(sample, AuxStorage, 5)
+STC_X(patch, AuxStorage, 5)
+
+STC_X(smooth, Interpol, 1)
+STC_X(flat, Interpol, 1)
+STC_X(noperspective, Interpol, 1)
+
+STC_X(lowp, Precision, 6)
+STC_X(mediump, Precision, 6)
+STC_X(highp, Precision, 6)
+
+STC_X(invariant, Invariance, 0)
+
+STC_X(precise, Misc, 7)
+STC_X(subroutine, Misc, 7)
+
+STC_X(coherent, Memory, 7)
+STC_X(volatile, Memory, 7)
+STC_X(restrict, Memory, 7)
+STC_X(readonly, Memory, 7)
+STC_X_LAST(writeonly, Memory, 7)
+
+#include "common/x_macros/end_def.inc"

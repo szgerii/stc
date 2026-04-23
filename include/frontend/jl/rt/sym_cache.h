@@ -34,6 +34,7 @@ struct JuliaSymbolCache {
     jl_sym_t* dbl_pipe   = jl_symbol("||");
     jl_sym_t* struct_    = jl_symbol("struct");
     jl_sym_t* subtype_op = jl_symbol("<:");
+    jl_sym_t* macrocall  = jl_symbol("macrocall");
 
     // types
     jl_sym_t* Bool    = jl_symbol("Bool");
@@ -58,7 +59,8 @@ struct JuliaSymbolCache {
     jl_sym_t* Vector  = jl_symbol("Vector");
 
     // misc
-    jl_sym_t* none = jl_symbol("none"); // for LineNumberNode-s without associated files
+    jl_sym_t* none   = jl_symbol("none"); // for LineNumberNode-s without associated files
+    jl_sym_t* layout = jl_symbol("@gl_layout");
 };
 
 } // namespace stc::jl::rt

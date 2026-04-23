@@ -28,6 +28,8 @@ public:
 
     jl_module_t* mod_ptr() const { return _mod_ptr; }
 
+    operator jl_module_t*() const { return mod_ptr(); }
+
     // returns fn ptr from cache, or retrieves from julia, adds to cache and returns
     jl_function_t* get_fn(std::string_view fn_name, bool throw_on_not_found = true);
 };

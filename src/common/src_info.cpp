@@ -69,8 +69,8 @@ void internal_error(const SrcInfoPool& pool, SrcLocationId loc_id, std::string_v
     return internal_error(file, loc, msg, out);
 }
 
-SrcInfoPool::SrcInfoPool(SizeTy initial_location_capacity, size_t initial_file_capacity)
-    : arena{initial_location_capacity},
+SrcInfoPool::SrcInfoPool(SizeTy initial_location_capacity_kb, size_t initial_file_capacity)
+    : arena{initial_location_capacity_kb * 1024U},
       arena_alloc{&arena},
       file_bounds{},
       last_loc_id{SrcLocationId::null_id()} {

@@ -225,8 +225,13 @@ int main(int argc, char* argv[]) {
 
     config.err_dump_verbosity = err_dump;
 
-    // ! TODO: remove
+// ! TODO: remove
+#ifdef _WIN32
     std::string path = argc > 1 ? argv[1] : "C:\\Users\\szucs\\szakdoga\\stc\\test.jl";
+#else
+    std::string path = argc > 1 ? argv[1] : "/mnt/c/Users/szucs/szakdoga/stc/test.jl";
+#endif
+
     std::ifstream file(path);
     if (!file.is_open()) {
         std::cerr << "Couldn't open input file at '" << path << "'\n";
@@ -237,17 +242,37 @@ int main(int argc, char* argv[]) {
     code_stream << file.rdbuf();
     std::string code{code_stream.str()};
 
+#define STC_CHECK_EXCEPTIONS                                                                       \
+    if (check_exceptions()) {                                                                      \
+        std::cerr << "\nAn error occured while initializing Julia\n";                              \
+        return 1;                                                                                  \
+    }
+
+#define STC_EVAL_AND_CHECK(str)                                                                    \
+    jl_eval_string(str);                                                                           \
+    STC_CHECK_EXCEPTIONS
+
     std::cout << "Initializing Julia environment...\n";
     jl_init();
+    STC_CHECK_EXCEPTIONS
 
-    jl_eval_string("using Pkg");
-    jl_eval_string("Pkg.develop(\"C:\\Users\\szucs\\szakdoga\\juliagebra\")");
-    jl_eval_string("import JuliaGLM");
+    STC_EVAL_AND_CHECK("using Pkg");
+
+#ifdef _WIN32
+    STC_EVAL_AND_CHECK("Pkg.develop(path=\"C:\\\\Users\\\\szucs\\\\szakdoga\\\\juliagebra\")");
+    STC_EVAL_AND_CHECK("Pkg.develop(path=\"C:\\\\Users\\\\szucs\\\\szakdoga\\\\stc\\\\STJL\")");
+#else
+    STC_EVAL_AND_CHECK("Pkg.develop(path=\"/mnt/c/Users/szucs/szakdoga/juliagebra\")");
+    STC_EVAL_AND_CHECK("Pkg.develop(path=\"/mnt/c/Users/szucs/szakdoga/stc/STJL\")");
+#endif
+
+    STC_EVAL_AND_CHECK("import JuliaGLM");
+    STC_EVAL_AND_CHECK("import STJL");
 
     // ! TODO: remove (current purpose: jl cache warmup + force compile return_type)
-    jl_eval_string("sin(0.5f0) + 1");
-    jl_eval_string("Core.Compiler.return_type(sin, Tuple{Float32})");
-    jl_eval_string("Core.Compiler.return_type(JuliaGLM.sin, Tuple{Vec3})");
+    STC_EVAL_AND_CHECK("sin(0.5f0) + 1");
+    STC_EVAL_AND_CHECK("Core.Compiler.return_type(sin, Tuple{Float32})");
+    STC_EVAL_AND_CHECK("Core.Compiler.return_type(JuliaGLM.sin, Tuple{JuliaGLM.Vec3})");
 
     std::cout << "Starting transpilation...\n";
 
@@ -272,4 +297,7 @@ int main(int argc, char* argv[]) {
     }
 
     return 0;
+
+#undef STC_EVAL_AND_CHECK
+#undef STC_CHECK_EXCEPTIONS
 }

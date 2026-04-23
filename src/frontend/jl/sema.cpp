@@ -207,8 +207,11 @@ bool JLSema::mangle_scope(JLScope& scope) {
             return false;
         }
 
-        bool is_fn_decl = isa<FunctionDecl>(decl);
-        bool rewrite    = isa<VarDecl>(decl) || isa<ParamDecl>(decl) || is_fn_decl;
+        FunctionDecl* fn_decl = dyn_cast<FunctionDecl>(decl);
+        VarDecl* var_decl     = dyn_cast<VarDecl>(decl);
+
+        bool rewrite = (var_decl != nullptr && !var_decl->is_builtin()) || isa<ParamDecl>(decl) ||
+                       (fn_decl != nullptr && ctx.get_sym(fn_decl->identifier) != "main");
         if (!rewrite)
             continue;
 
@@ -220,10 +223,7 @@ bool JLSema::mangle_scope(JLScope& scope) {
 
         decl->identifier = usym;
 
-        if (is_fn_decl) {
-            auto* fn_decl = dyn_cast<FunctionDecl>(decl);
-            assert(fn_decl != nullptr);
-
+        if (fn_decl != nullptr) {
             if (fn_decl->identifier == sym_main)
                 continue;
 
@@ -1728,6 +1728,7 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
                                           sym_str),
                               *sym);
 
+    bool is_global     = *maybe_bt == BindingType::Global;
     bool is_captured   = *maybe_bt == BindingType::Captured;
     NodeId reffed_decl = find_sym(sym->value);
 
@@ -1741,9 +1742,24 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
         return decl->type;
     }
 
-    if (is_captured) {
-        return fail(std::format("forward capture of symbol '{}' is not allowed", sym_str), dre);
+    if (is_global && ctx.target_info != nullptr) {
+        TypeId glob_ty = ctx.target_info->builtin_global_ty(ctx.get_sym(sym->value));
+
+        if (!glob_ty.is_null()) {
+            NodeId builtin_decl =
+                ctx.emplace_node<VarDecl>(dre.location, sym->value, glob_ty, ScopeType::Global,
+                                          NodeId::null_id(), true)
+                    .first;
+
+            dre.decl = builtin_decl;
+            global_scope().st_add_sym(sym->value, builtin_decl);
+
+            return glob_ty;
+        }
     }
+
+    if (is_captured)
+        return fail(std::format("forward capture of symbol '{}' is not allowed", sym_str), dre);
 
     bool is_fn_ref = *maybe_bt == BindingType::Global && tpool.is_any_func(expected_type);
     if (is_fn_ref) {
@@ -2156,7 +2172,10 @@ TypeId JLSema::visit_FunctionCall(FunctionCall& fn_call) {
             Expr* arg_expr = ctx.get_node(arg);
             assert(arg_expr != nullptr);
 
-            return fail("cannot infer static type for argument in function call", *arg_expr);
+            if (_success)
+                fail("cannot infer static type for argument in function call", *arg_expr);
+
+            return TypeId::null_id();
         }
 
         arg_types.emplace_back(arg_type);

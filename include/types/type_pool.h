@@ -17,8 +17,8 @@ class TypePool final {
     std::unordered_map<uint8_t, std::string> builtin_str_map{};
 
 public:
-    explicit TypePool(SizeTy initial_capacity)
-        : arena{initial_capacity} {
+    explicit TypePool(SizeTy initial_capacity_kb)
+        : arena{static_cast<SizeTy>(initial_capacity_kb * 1024U)} {
 
         // handling void id as constant 1U should be fine as long as this holds,
         // because arena starts counting offsets from 1 (to allow a null state),

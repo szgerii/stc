@@ -14,8 +14,10 @@ public:
     explicit GLSLCtx(const TargetInfo* target_info            = nullptr,
                      sir::NodeId::id_type node_arena_kb       = 128U,
                      SrcLocationId::id_type src_info_arena_kb = 128U,
-                     TypeId::id_type type_arena_kb            = 32U)
-        : sir::SIRCtx{{}, target_info, node_arena_kb, src_info_arena_kb, type_arena_kb},
+                     TypeId::id_type type_arena_kb = 32U, SymbolId::id_type sym_arena_kb = 64U,
+                     QualId::id_type qual_arena_kb = 16U)
+        : sir::SIRCtx{{},           target_info,  node_arena_kb, src_info_arena_kb, type_arena_kb,
+                      sym_arena_kb, qual_arena_kb},
           types{type_pool} {}
 
     explicit GLSLCtx(SIRCtx&& other)

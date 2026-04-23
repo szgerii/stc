@@ -17,6 +17,8 @@ class JLParser {
     SrcLocationId cur_loc;
     bool _success = true;
 
+    using ParseCallback = NodeId (JLParser::*)(jl_value_t*);
+
 public:
     std::optional<std::string> fallback_file = std::nullopt;
 
@@ -51,7 +53,31 @@ private:
 
     // helper parser functions, not participating in the regular parse_expr flow
     std::pair<jl_value_t*, TypeId> parse_type_annotation(jl_expr_t* annot);
-    NodeId parse_param_decl(jl_value_t* param);
+    jl_value_t* unwrap_layout_qual(jl_expr_t* lq_expr, std::vector<QualKind>& quals,
+                                   LQPayload& lq_payloads);
+    NodeId parse_qualified_decl(jl_value_t* qualified_expr,
+                                ParseCallback next_parser = &JLParser::parse);
+    NodeId parse_param_decl(jl_value_t* param_v);
+    NodeId parse_field_decl(jl_value_t* field_decl_v);
+
+    NodeId parse_method_decl(jl_value_t* val) {
+        jl_expr_t* expr = jl_is_expr(val) ? safe_cast<jl_expr_t>(val) : nullptr;
+
+        if (expr != nullptr && (expr->head == sym_cache.function || expr->head == sym_cache.eq))
+            return parse_method_decl(expr, jl_expr_nargs(expr));
+
+        return internal_error("unexpected parse_method_decl invocation");
+    }
+
+    NodeId parse_var_decl(jl_value_t* val) {
+        jl_expr_t* expr = jl_is_expr(val) ? safe_cast<jl_expr_t>(val) : nullptr;
+
+        if (expr != nullptr && (expr->head == sym_cache.global || expr->head == sym_cache.local ||
+                                expr->head == sym_cache.eq || expr->head == sym_cache.dbl_col))
+            return parse_var_decl(expr, jl_expr_nargs(expr));
+
+        return internal_error("unexpected parse_var_decl invocation");
+    }
 
     template <typename T, typename... Args>
     NodeId emplace_node(Args&&... args) {

@@ -4,6 +4,7 @@
 #include "common/dyn_cast.h"
 #include "common/src_info.h"
 #include "common/target_info.h"
+#include "types/qualifier_pool.h"
 #include "types/type_pool.h"
 
 namespace stc {
@@ -40,18 +41,19 @@ public:
     types::TypePool type_pool;
     SrcInfoPool src_info_pool;
     SymbolPool sym_pool;
+    QualifierPool qual_pool;
 
     explicit ASTCtx(std::vector<types::BuiltinTD> type_builtins = {},
                     const TargetInfo* target_info = nullptr, NodeIdTy::id_type node_arena_kb = 128U,
                     SrcLocationId::id_type src_info_arena_kb = 128U,
                     types::TypeId::id_type type_arena_kb     = 32U,
-                    SymbolId::id_type sym_arena_kb           = 64U)
+                    SymbolId::id_type sym_arena_kb = 64U, QualId::id_type qual_arena_kb = 16U)
         : target_info{target_info},
           node_arena{node_arena_kb * 1024U},
-          type_pool{static_cast<types::TypeId::id_type>(type_arena_kb * 1024U),
-                    std::move(type_builtins)},
-          src_info_pool{src_info_arena_kb * 1024U},
-          sym_pool{sym_arena_kb * 1024U} {}
+          type_pool{static_cast<types::TypeId::id_type>(type_arena_kb), std::move(type_builtins)},
+          src_info_pool{src_info_arena_kb},
+          sym_pool{sym_arena_kb},
+          qual_pool{qual_arena_kb} {}
 
     ASTCtx(const ASTCtx&)                  = delete;
     ASTCtx& operator=(const ASTCtx&) const = delete;
@@ -79,7 +81,8 @@ protected:
           node_arena{node_arena_kb * 1024U},
           type_pool{std::move(other.type_pool)},
           src_info_pool{std::move(other.src_info_pool)},
-          sym_pool{std::move(other.sym_pool)} {}
+          sym_pool{std::move(other.sym_pool)},
+          qual_pool{std::move(other.qual_pool)} {}
 
 public:
     template <typename T, typename U>
@@ -137,6 +140,10 @@ public:
             throw std::logic_error{"symbol id not found in current context state"};
 
         return *result;
+    }
+
+    [[nodiscard]] const DeclQualifiers& get_quals(QualId qual_id) const {
+        return qual_pool.get_quals(qual_id);
     }
 
     operator const types::TypePool&() const { return type_pool; }

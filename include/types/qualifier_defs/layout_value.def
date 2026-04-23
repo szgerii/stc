@@ -1,0 +1,20 @@
+#include "common/x_macros/begin_def.inc"
+
+STC_X_FIRST(binding)
+STC_X(offset)
+STC_X(align)
+STC_X(location)
+STC_X(component)
+STC_X(index)
+STC_X(invocations)
+STC_X(local_size_x)
+STC_X(local_size_y)
+STC_X(local_size_z)
+STC_X(vertices)
+STC_X(xfb_buffer)
+STC_X(xfb_offset)
+STC_X(xfb_stride)
+STC_X(max_vertices)
+STC_X_LAST(stream)
+
+#include "common/x_macros/end_def.inc"

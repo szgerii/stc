@@ -22,9 +22,9 @@ Here is a (very) rough overview of the development timeline and its current prog
 - [x] Configuration API
 - [x] Vector, matrix and array types
 - [x] Builtin function sema system, GLSL builtins
-- [ ] Qualified types [mostly done, not yet integrated]
+- [x] Qualified types
 - [ ] Julia Pkg API [cpp-side mostly done]
-- [ ] Expand supported Julia and GLSL language subsets
+- [x] Expand supported Julia and GLSL language subsets
 - [ ] Tests
 - [ ] Lambda lifting (low prio) [julia sema is ~90% prepared for this]
 - [ ] Multi-file and multi-function support (low prio)

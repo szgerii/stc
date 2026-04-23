@@ -1,7 +1,9 @@
-#include "backend/glsl/type_utils.h"
-
 #include "backend/glsl/code_gen.h"
+#include "backend/glsl/type_utils.h"
 #include "common/config.h"
+#include "types/qualifier_pool.h"
+
+#include <algorithm>
 
 namespace {
 
@@ -49,6 +51,45 @@ std::string_view bin_op_kind_str(BinOpKind op) {
     // clang-format on
 }
 
+void print_quals(const stc::types::DeclQualifiers& decl_quals, std::ostream& out) {
+    using namespace stc::types;
+
+    if (decl_quals.quals.empty())
+        return;
+
+    std::vector<QualKind> sorted_quals = decl_quals.quals;
+
+    std::ranges::sort(sorted_quals, std::less<>{}, stc::glsl::qual_rank);
+
+    bool in_layout = false;
+    for (QualKind qk : sorted_quals) {
+        if (!is_layout_qual(qk)) {
+            if (in_layout) {
+                out << ") ";
+                in_layout = false;
+            }
+
+            out << stc::glsl::qual_kind_to_str(qk) << ' ';
+            continue;
+        }
+
+        if (!in_layout)
+            out << "layout(";
+        else
+            out << ", ";
+
+        out << stc::glsl::qual_kind_to_str(qk);
+
+        if (!is_valueless_layout_qual(qk))
+            out << " = " << decl_quals.layout_qual_payloads.get_qual_value(qk);
+
+        in_layout = true;
+    }
+
+    if (in_layout)
+        out << ") ";
+}
+
 } // namespace
 
 namespace stc::glsl {
@@ -62,6 +103,8 @@ std::string GLSLCodeGenVisitor::indent() const {
 // ================
 
 void GLSLCodeGenVisitor::visit_VarDecl(VarDecl& var_decl) {
+    print_quals(ctx.get_quals(var_decl.qualifiers()), out);
+
     out << type_str(var_decl.type, ctx.type_pool, ctx.sym_pool) << ' '
         << ctx.get_sym(var_decl.identifier);
 
@@ -75,6 +118,8 @@ void GLSLCodeGenVisitor::visit_VarDecl(VarDecl& var_decl) {
 
 void GLSLCodeGenVisitor::visit_FunctionDecl(FunctionDecl& fn_decl) {
     assert(ctx.isa<ScopedStmt>(fn_decl.body) && "non-scoped-stmt function body not caught by sema");
+
+    print_quals(ctx.get_quals(fn_decl.qualifiers()), out);
 
     out << type_str(fn_decl.return_type, ctx.type_pool, ctx.sym_pool) << " "
         << ctx.get_sym(fn_decl.identifier) << '(';
@@ -102,6 +147,8 @@ void GLSLCodeGenVisitor::visit_FunctionDecl(FunctionDecl& fn_decl) {
 }
 
 void GLSLCodeGenVisitor::visit_ParamDecl(ParamDecl& param_decl) {
+    print_quals(ctx.get_quals(param_decl.qualifiers()), out);
+
     out << type_str(param_decl.param_type, ctx.type_pool, ctx.sym_pool) << ' '
         << ctx.get_sym(param_decl.identifier);
 }
@@ -123,6 +170,8 @@ void GLSLCodeGenVisitor::visit_StructDecl(StructDecl& struct_decl) {
 }
 
 void GLSLCodeGenVisitor::visit_FieldDecl(FieldDecl& field_decl) {
+    print_quals(ctx.get_quals(field_decl.qualifiers()), out);
+
     out << indent() << type_str(field_decl.field_type, ctx.type_pool, ctx.sym_pool) << ' '
         << ctx.get_sym(field_decl.identifier);
 }

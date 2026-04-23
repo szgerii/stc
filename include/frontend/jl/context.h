@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ast/context.h"
-#include "common/literals.h"
 #include "frontend/jl/ast.h"
 #include "frontend/jl/module_pool.h"
 #include "frontend/jl/rt/env.h"
@@ -32,13 +31,14 @@ public:
     explicit JLCtx(const TargetInfo* target_info = nullptr, NodeId::id_type node_arena_kb = 128U,
                    SrcLocationId::id_type src_info_arena_kb = 128U,
                    TypeId::id_type type_arena_kb = 32U, SymbolId::id_type sym_arena_kb = 64U,
-                   ModuleId::id_type module_arena_b = 128_u8)
+                   QualId::id_type qual_arena_kb = 16U, ModuleId::id_type module_arena_b = 512U)
         : ASTCtx{{{BuiltinTypeKind::Nothing}, {BuiltinTypeKind::String}, {BuiltinTypeKind::Symbol}},
                  target_info,
                  node_arena_kb,
                  src_info_arena_kb,
                  type_arena_kb,
-                 sym_arena_kb},
+                 sym_arena_kb,
+                 qual_arena_kb},
           module_pool{module_arena_b} {
 
         init_jl_types();

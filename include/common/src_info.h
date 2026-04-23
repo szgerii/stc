@@ -65,7 +65,7 @@ private:
 
 public:
     // ! expects arena to not be modified by others, only inspected
-    explicit SrcInfoPool(SizeTy initial_location_capacity, size_t initial_file_capacity = 4);
+    explicit SrcInfoPool(SizeTy initial_location_capacity_kb, size_t initial_file_capacity = 4);
 
     SrcInfoPool(const SrcInfoPool&)                = delete;
     SrcInfoPool& operator=(const SrcInfoPool&)     = delete;

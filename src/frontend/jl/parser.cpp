@@ -1,4 +1,5 @@
 #include "frontend/jl/parser.h"
+#include "frontend/jl/type_conversion.h"
 #include "frontend/jl/utils.h"
 #include <algorithm>
 #include <bit>
@@ -9,11 +10,27 @@
 
 namespace {
 
+STC_FORCE_INLINE jl_sym_t* is_sym(jl_value_t* value, jl_sym_t* checked_sym) {
+    if (value == nullptr || !jl_is_symbol(value))
+        return nullptr;
+
+    jl_sym_t* sym = stc::jl::safe_cast<jl_sym_t>(value);
+    return sym == checked_sym ? sym : nullptr;
+}
+
+STC_FORCE_INLINE jl_sym_t* is_sym(jl_value_t* value, std::string_view checked_sym) {
+    if (value == nullptr || !jl_is_symbol(value))
+        return nullptr;
+
+    jl_sym_t* sym = stc::jl::safe_cast<jl_sym_t>(value);
+    return jl_symbol_name(sym) == checked_sym ? sym : nullptr;
+}
+
 STC_FORCE_INLINE jl_expr_t* is_expr(jl_value_t* value, jl_sym_t* head) {
     if (value == nullptr || !jl_is_expr(value))
         return nullptr;
 
-    auto* expr = reinterpret_cast<jl_expr_t*>(value);
+    jl_expr_t* expr = stc::jl::safe_cast<jl_expr_t>(value);
     return expr->head == head ? expr : nullptr;
 }
 
@@ -60,6 +77,18 @@ TypeId JLParser::resolve_type(jl_value_t* type) {
                 return ctx.jl_Int64_t();
             if (tsym == sym_cache.UInt)
                 return ctx.jl_UInt64_t();
+        }
+
+        jl_value_t* type_val = jl_get_global(ctx.jl_env.module_cache.glm_mod, tsym);
+
+        if (type_val == nullptr)
+            type_val = jl_get_global(ctx.jl_env.module_cache.main_mod, tsym);
+
+        if (type_val != nullptr && jl_is_datatype(type_val)) {
+            TypeId parsed = parse_jl_type(safe_cast<jl_datatype_t>(type_val), ctx);
+
+            if (!parsed.is_null())
+                return parsed;
         }
 
         error(std::format("unsupported Julia type: {}", jl_symbol_name(tsym)));
@@ -310,6 +339,161 @@ std::pair<jl_value_t*, TypeId> JLParser::parse_type_annotation(jl_expr_t* annot)
     return {target_v, type_id};
 }
 
+jl_value_t* JLParser::unwrap_layout_qual(jl_expr_t* lq_expr, std::vector<QualKind>& quals,
+                                         LQPayload& lq_payloads) {
+    assert(lq_expr->head == sym_cache.macrocall);
+    assert(is_sym(jl_exprarg(lq_expr, 0), sym_cache.layout));
+
+    size_t nargs = jl_expr_nargs(lq_expr);
+    for (size_t i = 2; i < nargs - 1; i++) {
+        jl_value_t* lq_opt_v = jl_exprarg(lq_expr, i);
+
+        bool has_value         = false;
+        int32_t value          = 0;
+        jl_sym_t* opt_name_sym = nullptr;
+
+        if (is_expr(lq_opt_v, sym_cache.eq)) {
+            jl_expr_t* lq_opt_expr = safe_cast<jl_expr_t>(lq_opt_v);
+
+            jl_value_t* opt_name_v = jl_exprarg(lq_opt_expr, 0);
+            if (!jl_is_symbol(opt_name_v)) {
+                error("only symbols are allowed on the lhs of a layout option");
+                return nullptr;
+            }
+
+            opt_name_sym = safe_cast<jl_sym_t>(opt_name_v);
+
+            jl_value_t* rhs_v = jl_exprarg(lq_opt_expr, 1);
+            if (jl_is_int32(rhs_v)) {
+                value     = jl_unbox_int32(rhs_v);
+                has_value = true;
+            } else if (jl_is_int64(rhs_v)) {
+                static constexpr int64_t i32_min =
+                    static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+                static constexpr int64_t i32_max =
+                    static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+
+                int64_t value_i64 = jl_unbox_int64(rhs_v);
+
+                if (value_i64 < i32_min || value_i64 > i32_max) {
+                    error("layout option values have to be 32 bit int literals, or 64 bit int "
+                          "literals convertible to 32 bits without truncation");
+                    return nullptr;
+                }
+
+                value     = static_cast<int32_t>(value_i64);
+                has_value = true;
+            }
+        } else if (jl_is_symbol(lq_opt_v)) {
+            opt_name_sym = safe_cast<jl_sym_t>(lq_opt_v);
+        } else {
+            error("only symbols and assignment expressions are allowed in a layout qualifier's "
+                  "option");
+            return nullptr;
+        }
+
+        std::string_view opt_name = jl_symbol_name(opt_name_sym);
+
+        auto qual = try_parse_qual(opt_name);
+        if (!qual.has_value() || !is_layout_qual(*qual)) {
+            error(std::format("invalid layout qualifier option: {}", opt_name));
+            return nullptr;
+        }
+
+        if (has_value && is_valueless_layout_qual(*qual)) {
+            error(std::format("layout option '{}' does not expect a value", opt_name));
+            return nullptr;
+        }
+
+        if (!has_value && is_value_layout_qual(*qual)) {
+            error(std::format("layout option '{}' expects a value", opt_name));
+            return nullptr;
+        }
+
+        quals.emplace_back(*qual);
+
+        if (has_value)
+            lq_payloads.set(*qual, value);
+    }
+
+    return nargs > 0 ? jl_exprarg(lq_expr, nargs - 1) : nullptr;
+}
+
+NodeId JLParser::parse_qualified_decl(jl_value_t* qualified_expr, ParseCallback next_parser) {
+    std::vector<QualKind> quals{};
+    LQPayload lq_payloads{};
+
+    auto* expr_it_v = qualified_expr;
+    while (is_expr(expr_it_v, sym_cache.macrocall)) {
+        jl_expr_t* expr_it = safe_cast<jl_expr_t>(expr_it_v);
+        assert(expr_it->head == sym_cache.macrocall);
+
+        size_t nargs = jl_expr_nargs(expr_it);
+        if (nargs < 2)
+            return internal_error("unexpected macrocall layout (less than two args)");
+
+        jl_value_t* arg1_v = jl_exprarg(expr_it, 0);
+        jl_value_t* arg2_v = jl_exprarg(expr_it, 1);
+
+        if (!jl_is_linenumbernode(arg2_v))
+            return internal_error(
+                "unexpected macrocall layout (second arg is not a LineNumberNode)");
+
+        // update cur_loc
+        parse(arg2_v);
+
+        if (!jl_is_symbol(arg1_v))
+            return internal_error("unexpected macrocall layout (first arg is not a Symbol)");
+
+        jl_sym_t* arg1_sym = safe_cast<jl_sym_t>(arg1_v);
+
+        // layout qualifiers are handled separately
+        if (arg1_sym == sym_cache.layout) {
+            expr_it_v = unwrap_layout_qual(expr_it, quals, lq_payloads);
+            continue;
+        }
+
+        std::string_view qual_macro_name = jl_symbol_name(arg1_sym);
+
+        std::optional<QualKind> qual = std::nullopt;
+        if (qual_macro_name.size() > 4) {
+            // @gl_x -> x
+            std::string_view qual_name{qual_macro_name.begin() + 4, qual_macro_name.end()};
+
+            qual = try_parse_qual(qual_name);
+
+            // no macro exists for these, simply discard
+            if (is_layout_qual(*qual))
+                qual = std::nullopt;
+        }
+
+        if (!qual.has_value())
+            return error("non-qualifier macro calls are currently not supported");
+
+        quals.emplace_back(*qual);
+
+        if (nargs == 2)
+            return error("empty qualifier target is not allowed");
+
+        expr_it_v = jl_exprarg(expr_it, 2);
+    }
+
+    NodeId decl_id = (this->*next_parser)(expr_it_v);
+    if (!_success)
+        return NodeId::null_id();
+
+    Decl* decl = ctx.get_and_dyn_cast<Decl>(decl_id);
+    if (decl == nullptr)
+        return error("qualifiers can only be applied to declarations");
+
+    assert(decl->qualifiers.is_null());
+    QualId qual_id   = !quals.empty() ? ctx.qual_pool.emplace(std::move(quals), lq_payloads).first
+                                      : QualId::null_id();
+    decl->qualifiers = qual_id;
+
+    return decl_id;
+}
+
 NodeId JLParser::parse_expr(jl_expr_t* expr) {
     jl_sym_t* head = expr->head;
     size_t nargs   = jl_expr_nargs(expr);
@@ -352,6 +536,9 @@ NodeId JLParser::parse_expr(jl_expr_t* expr) {
 
     if (head == sym_cache.struct_)
         return parse_struct(expr, nargs);
+
+    if (head == sym_cache.macrocall)
+        return parse_qualified_decl(reinterpret_cast<jl_value_t*>(expr));
 
     if (head == sym_cache.break_)
         return emplace_node<BreakStmt>(cur_loc);
@@ -486,9 +673,11 @@ NodeId JLParser::parse_method_decl(jl_expr_t* expr, size_t nargs) {
     for (size_t i = 1; i < header_nargs; i++) {
         jl_value_t* arg_v = jl_exprarg(header, i);
 
-        NodeId arg_id = parse_param_decl(arg_v);
-        assert(ctx.isa<ParamDecl>(arg_id));
+        NodeId arg_id = parse_qualified_decl(arg_v, &JLParser::parse_param_decl);
+        if (arg_id.is_null())
+            continue;
 
+        assert(ctx.isa<ParamDecl>(arg_id));
         param_decls.emplace_back(arg_id);
     }
 
@@ -570,16 +759,20 @@ NodeId JLParser::parse_assignment(jl_expr_t* expr, size_t nargs) {
 
     // f(x, y) = x + y
     if (is_expr(lhs, sym_cache.call))
-        return parse_method_decl(expr, nargs);
+        return parse_qualified_decl(reinterpret_cast<jl_value_t*>(expr),
+                                    &JLParser::parse_method_decl);
 
     // x::Int = 0
     if (is_expr(lhs, sym_cache.dbl_col))
-        return parse_var_decl(expr, nargs);
+        return parse_qualified_decl(reinterpret_cast<jl_value_t*>(expr), &JLParser::parse_var_decl);
 
     SrcLocationId outer_loc = cur_loc;
 
     NodeId parsed_lhs = parse(lhs);
     NodeId parsed_rhs = parse(jl_exprarg(expr, 1));
+
+    if (parsed_lhs.is_null() || parsed_rhs.is_null())
+        return NodeId::null_id();
 
     return emplace_node<Assignment>(outer_loc, parsed_lhs, parsed_rhs);
 }
@@ -779,6 +972,34 @@ NodeId JLParser::parse_ref(jl_expr_t* expr, size_t nargs) {
     return emplace_node<IndexerExpr>(base_loc, target, std::move(indexers));
 }
 
+NodeId JLParser::parse_field_decl(jl_value_t* field_decl_v) {
+    if (jl_is_symbol(field_decl_v))
+        return error("field declaration without explicit type annotation is not allowed");
+
+    jl_expr_t* field_decl_expr =
+        jl_is_expr(field_decl_v) ? safe_cast<jl_expr_t>(field_decl_v) : nullptr;
+
+    if (field_decl_expr == nullptr || field_decl_expr->head != sym_cache.dbl_col)
+        return error("only typed field declarations are supported inside struct definitions, "
+                     "inner constructors are not allowed");
+
+    auto [field_id_v, field_type] = parse_type_annotation(field_decl_expr);
+
+    if (field_id_v == nullptr || field_type.is_null())
+        return NodeId::null_id();
+
+    if (!jl_is_symbol(field_id_v))
+        return internal_error("unexpected field declaration layout (lhs is not a symbol)");
+
+    std::string_view field_id{jl_symbol_name(safe_cast<jl_sym_t>(field_id_v))};
+    SymbolId field_id_sym = ctx.sym_pool.get_id(field_id);
+
+    NodeId parsed_decl = emplace_node<FieldDecl>(cur_loc, field_id_sym, field_type);
+    assert(!parsed_decl.is_null());
+
+    return parsed_decl;
+}
+
 NodeId JLParser::parse_struct(jl_expr_t* expr, size_t nargs) {
     assert(expr->head == sym_cache.struct_);
 
@@ -850,36 +1071,18 @@ NodeId JLParser::parse_struct(jl_expr_t* expr, size_t nargs) {
             continue;
         }
 
-        if (jl_is_symbol(field_decl_v))
-            return error("field declaration without explicit type annotation is not allowed");
+        NodeId parsed_decl = parse_qualified_decl(field_decl_v, &JLParser::parse_field_decl);
 
-        jl_expr_t* field_decl_expr =
-            jl_is_expr(field_decl_v) ? safe_cast<jl_expr_t>(field_decl_v) : nullptr;
-
-        if (field_decl_expr == nullptr || field_decl_expr->head != sym_cache.dbl_col)
-            return error("only typed field declarations are supported inside struct definitions, "
-                         "inner constructors are not allowed");
-
-        auto [field_id_v, field_type] = parse_type_annotation(field_decl_expr);
-
-        if (field_id_v == nullptr || field_type.is_null())
+        FieldDecl* fdecl = ctx.get_and_dyn_cast<FieldDecl>(parsed_decl);
+        if (parsed_decl.is_null())
             continue;
 
-        if (!jl_is_symbol(field_id_v))
-            return internal_error("unexpected field declaration layout (lhs is not a symbol)");
-
-        std::string_view field_id{jl_symbol_name(safe_cast<jl_sym_t>(field_id_v))};
-        SymbolId field_id_sym = ctx.sym_pool.get_id(field_id);
-
-        bool inserted = field_names.emplace(field_id_sym).second;
+        bool inserted = field_names.emplace(fdecl->identifier).second;
         if (!inserted)
             return error("struct with repeated field names is not allowed");
 
-        NodeId parsed_decl = emplace_node<FieldDecl>(cur_loc, field_id_sym, field_type);
-        assert(!parsed_decl.is_null());
-
         sdecl->field_decls.emplace_back(parsed_decl);
-        field_infos.emplace_back(field_id_sym, field_type);
+        field_infos.emplace_back(fdecl->identifier, fdecl->type);
     }
 
     sdecl->field_decls.shrink_to_fit();

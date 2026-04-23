@@ -284,7 +284,7 @@ void JLDumper::visit_DotChain(DotChain& dc) {
     if (!dc.resolved_expr.is_null())
         visit(dc.resolved_expr);
     else
-        out << "-\n";
+        out << indent() << "-\n";
     dec_indent();
 }
 
