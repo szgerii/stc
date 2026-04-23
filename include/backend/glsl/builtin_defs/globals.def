@@ -1,0 +1,37 @@
+#include "common/x_macros/begin_def.inc"
+
+// clang-format off
+
+// requires stc::glsl::detail::BuiltinType to be using enum-d in including scope
+
+// format:
+// FunctionName, Signatures...
+//     where Signatures[i] == {ReturnType, ArgumentTypes...}
+
+// builtin variable list collected and grouped as seen in specs for 4.60.8 (chapter 7)
+// https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.4.60.pdf
+
+// 7.1: Built-In Language Variables
+
+// 7.1.1: Vertex Shader Special Variables
+STC_X_FIRST(gl_VertextID, Int)
+STC_X(gl_InstanceID, Int)
+STC_X(gl_VertexIndex, Int)
+STC_X(gl_InstanceIndex, Int)
+STC_X(gl_DrawID, Int)
+STC_X(gl_BaseVertex, Int)
+STC_X(gl_BaseInstance, Int)
+
+// gl_PerVertex (out)
+STC_X(gl_Position, Vec4F)
+STC_X(gl_PointSize, Float)
+STC_X(gl_ClipDistance, FloatArr)
+STC_X(gl_CullDistance, FloatArr)
+
+// 7.1.2: Tessellation Control Shader Special Variables
+// gl_PerVertex (in)
+STC_X(gl_PatchVerticesIn)
+
+STC_X_LAST(sin, {GenF, GenF})
+
+#include "common/x_macros/end_def.inc"

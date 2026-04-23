@@ -206,7 +206,7 @@ EMPTY_VISITOR_DEF(OpaqueFunction)
 EMPTY_VISITOR_DEF(BuiltinFunction)
 
 // struct declaration are only allowed at the top level (global scope)
-// SymbolRes is defined to only be ran on local scopes
+// SymbolRes is designed to only be ran on local scopes
 EMPTY_VISITOR_DEF(StructDecl)
 EMPTY_VISITOR_DEF(FieldDecl)
 
@@ -246,7 +246,28 @@ void SymbolRes::visit_SymbolLiteral(SymbolLiteral& sym_lit) {
     try_register(sym_lit.value, sym_lit, ScopeInferSrc::Access);
 }
 
-EMPTY_VISITOR_DEF(ModuleLookup)
+void SymbolRes::visit_FieldAccess(FieldAccess& field_access) {
+    const auto* target = ctx.get_and_dyn_cast<Decl>(field_access.target);
+    try_register(target->identifier, field_access, ScopeInferSrc::Access);
+}
+
+void SymbolRes::visit_DotChain(DotChain& dc) {
+    if (dc.chain.size() != 2 || in_fn_call_target)
+        return;
+
+    const auto* sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(dc.chain[0]);
+
+    if (sym_lit == nullptr) {
+        const auto* dre = ctx.get_and_dyn_cast<DeclRefExpr>(dc.chain[1]);
+
+        if (dre != nullptr)
+            sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(dre->decl);
+    }
+
+    assert(sym_lit != nullptr);
+
+    try_register(sym_lit->value, dc, ScopeInferSrc::Access);
+}
 
 EMPTY_VISITOR_DEF(NothingLiteral)
 EMPTY_VISITOR_DEF(OpaqueNode)
@@ -283,7 +304,12 @@ void SymbolRes::visit_Assignment(Assignment& assign) {
 }
 
 void SymbolRes::visit_FunctionCall(FunctionCall& fn_call) {
+    bool prev_value   = in_fn_call_target;
+    in_fn_call_target = true;
+
     visit(fn_call.target_fn);
+
+    in_fn_call_target = prev_value;
 
     for (NodeId arg : fn_call.args)
         visit(arg);

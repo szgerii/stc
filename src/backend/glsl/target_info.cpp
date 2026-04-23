@@ -64,7 +64,6 @@ GLSLTargetInfo GLSLTargetInfo::create_instance(GLSLTypes types) {
 }
 
 TargetInfo::GlobalList GLSLTargetInfo::create_globals(GLSLTypes& types) {
-    // CLEANUP: play around with clang format options here
     return {
         // clang-format off
         {"gl_FragCoord",   types.gl_vec4},

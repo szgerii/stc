@@ -199,13 +199,16 @@ TypeId TypePool::make_struct_td(SymbolId name, std::vector<StructData::FieldInfo
     if (struct_name.empty())
         throw std::logic_error{"Cannot create struct type with an empty type name"};
 
-    if (std::ranges::any_of(fields, [&sym_pool](const StructData::FieldInfo& f) {
-            std::string_view sym = sym_pool.get_symbol(f.name);
-            return sym.empty();
-        }))
+    bool any_empty_field = std::ranges::any_of(fields, [&sym_pool](const StructData::FieldInfo& f) {
+        std::string_view sym = sym_pool.get_symbol(f.name);
+        return sym.empty();
+    });
+
+    if (any_empty_field)
         throw std::logic_error{"Cannot create struct type with an empty field name"};
 
-    if (has_duplicates(fields, [](const auto& fi) { return fi.name; }))
+    bool any_dup_field = has_duplicates(fields, [](const auto& fi) { return fi.name; });
+    if (any_dup_field)
         throw std::logic_error{"Field names have to be unique inside structs"};
 
     if (struct_map.contains(name))

@@ -8,7 +8,7 @@
 // FunctionName, Signatures...
 //     where Signatures[i] == {ReturnType, ArgumentTypes...}
 
-// builtin function list collected and grouped as seen in specs for 4.60.8
+// builtin function list collected and grouped as seen in specs for 4.60.8 (chapter 8)
 // https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.4.60.pdf
 
 // 8.1: Angle and Trigonometry Functions

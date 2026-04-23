@@ -47,6 +47,7 @@ private:
     PARSER_DECL(vect);
     PARSER_DECL(ref);
     PARSER_DECL(log_op);
+    PARSER_DECL(struct);
 
     // helper parser functions, not participating in the regular parse_expr flow
     std::pair<jl_value_t*, TypeId> parse_type_annotation(jl_expr_t* annot);

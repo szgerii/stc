@@ -15,7 +15,8 @@ class SymbolRes : public JLVisitor<SymbolRes, JLCtx, void> {
     std::vector<JLScope>& scopes;
     ScopeInferTable scope_infer_table{};
     bool in_interactive_ctx;
-    bool _success = true;
+    bool in_fn_call_target = false;
+    bool _success          = true;
 
 public:
     explicit SymbolRes(JLCtx& ctx, std::vector<JLScope>& scopes, bool in_interactive_ctx = false)

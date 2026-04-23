@@ -213,6 +213,20 @@ void SIRDumper::visit_StructInstantiation(StructInstantiation& s_inst) {
     }
 }
 
+void SIRDumper::visit_FieldAccess(FieldAccess& acc) {
+    out << indent() << "FieldAccess:\n";
+
+    inc_indent();
+    out << indent() << dump_label("target");
+    visit(acc.target);
+    dec_indent();
+
+    inc_indent();
+    out << indent() << dump_label("field decl");
+    visit(acc.field_decl);
+    dec_indent();
+}
+
 void SIRDumper::visit_ScopedExpr(ScopedExpr& scoped_expr) {
     out << indent() << "ScopedExpr:\n";
 

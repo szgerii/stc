@@ -252,16 +252,18 @@ struct BuiltinFunction : public Decl {
     SAME_NODE_KIND_DEF(NodeKind::BuiltinFn)
 };
 
-// FEATURE: support for parametric types
 struct StructDecl : public Decl {
     std::vector<NodeId> field_decls;
 
     explicit StructDecl(SrcLocationId location, SymbolId identifier,
-                        std::vector<NodeId> field_decls)
-        : Decl{location, NodeKind::StructDecl, identifier}, field_decls{std::move(field_decls)} {
+                        std::vector<NodeId> field_decls, bool is_mutable)
+        : Decl{location, NodeKind::StructDecl, identifier, static_cast<uint8_t>(is_mutable)},
+          field_decls{std::move(field_decls)} {
 
         ASSERT_CONTAINS_NO_NULL(field_decls);
     }
+
+    bool is_mutable() const { return static_cast<bool>(node_storage()); }
 
     SAME_NODE_KIND_DEF(NodeKind::StructDecl)
 };
@@ -385,17 +387,34 @@ struct SymbolLiteral : public Expr {
     SAME_NODE_KIND_DEF(NodeKind::SymLit)
 };
 
-// aims to store "ModA.ModB.sym"-like chains where each member is a SymbolLiteral
-struct ModuleLookup : public Expr {
-    std::vector<NodeId> chain;
+struct FieldAccess : public Expr {
+    NodeId target;
+    NodeId field_decl;
+    NodeId target_type_decl = NodeId::null_id();
 
-    explicit ModuleLookup(SrcLocationId location, std::vector<NodeId> chain)
-        : Expr{location, NodeKind::ModLookup}, chain{std::move(chain)} {
+    explicit FieldAccess(SrcLocationId location, NodeId target, NodeId field_decl)
+        : Expr{location, NodeKind::FieldAccess}, target{target}, field_decl{field_decl} {
+
+        ASSERT_NOT_NULL(target);
+        ASSERT_NOT_NULL(field_decl);
+    }
+
+    SAME_NODE_KIND_DEF(NodeKind::FieldAccess)
+};
+
+struct DotChain : public Expr {
+    std::vector<NodeId> chain;
+    NodeId resolved_expr = NodeId::null_id();
+
+    explicit DotChain(SrcLocationId location, std::vector<NodeId> chain)
+        : Expr{location, NodeKind::DotChain}, chain{std::move(chain)} {
 
         ASSERT_CONTAINS_NO_NULL(chain);
     }
 
-    SAME_NODE_KIND_DEF(NodeKind::ModLookup)
+    bool is_resolved() const { return !resolved_expr.is_null(); }
+
+    SAME_NODE_KIND_DEF(NodeKind::DotChain)
 };
 
 struct NothingLiteral : public Expr {

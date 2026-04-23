@@ -294,6 +294,11 @@ void SIRSemaVisitor::visit_IndexerExpr(IndexerExpr& idx_expr) {
     visit(idx_expr.indexer);
 }
 
+void SIRSemaVisitor::visit_FieldAccess(FieldAccess& acc) {
+    visit(acc.target);
+    visit(acc.field_decl);
+}
+
 void SIRSemaVisitor::visit_Assignment(Assignment& assignment) {
     // TODO: l-value, r-value
     visit(assignment.target);

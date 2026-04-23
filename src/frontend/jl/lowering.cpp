@@ -71,12 +71,21 @@ SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
     // lift global var decls (including implicit ones) and method decls to the top
     std::vector<NodeId> prepended_exprs{};
     bool encountered_real_body = false;
+    size_t struct_count        = 0;
     for (size_t i = 0; i < body.size();) {
         NodeId expr = body[i];
 
         if (ctx.isa<MethodDecl>(expr)) {
             prepended_exprs.emplace_back(expr);
             body.erase(body.begin() + i);
+
+            continue;
+        }
+
+        if (ctx.isa<StructDecl>(expr)) {
+            prepended_exprs.insert(prepended_exprs.begin() + struct_count, expr);
+            body.erase(body.begin() + i);
+            struct_count++;
 
             continue;
         }
@@ -242,7 +251,11 @@ SIRNodeId JLLoweringVisitor::visit_BuiltinFunction(BuiltinFunction& builtin_fn) 
 }
 
 SIRNodeId JLLoweringVisitor::visit_StructDecl(StructDecl& struct_) {
-    std::vector<SIRNodeId> fields;
+    if (struct_.field_decls.empty())
+        return fail(std::format("empty structs are not allowed (in definition of struct '{}')",
+                                sir_ctx.get_sym(struct_.identifier)));
+
+    std::vector<SIRNodeId> fields{};
     fields.reserve(struct_.field_decls.size());
 
     for (NodeId field : struct_.field_decls)
@@ -344,6 +357,52 @@ SIRNodeId JLLoweringVisitor::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
                                            std::move(lowered_members));
 }
 
+SIRNodeId JLLoweringVisitor::visit_StringLiteral([[maybe_unused]] StringLiteral& lit) {
+    return internal_error("unsupported String literal node not caught by sema");
+}
+
+SIRNodeId JLLoweringVisitor::visit_SymbolLiteral([[maybe_unused]] SymbolLiteral& lit) {
+    return internal_error("symbol literal in AST should have been resolved by sema");
+}
+
+SIRNodeId JLLoweringVisitor::visit_NothingLiteral([[maybe_unused]] NothingLiteral& lit) {
+    throw std::logic_error{"using nothing literal outside of a return stmt"};
+}
+
+SIRNodeId JLLoweringVisitor::visit_OpaqueNode([[maybe_unused]] OpaqueNode& opaq) {
+    return internal_error("OpaqueNode node not caught by sema");
+}
+
+SIRNodeId JLLoweringVisitor::visit_GlobalRef([[maybe_unused]] GlobalRef& gref) {
+    throw std::logic_error{"using unimplemented feature: global refs"};
+}
+
+SIRNodeId JLLoweringVisitor::visit_ImplicitCast(ImplicitCast& impl_cast) {
+    return visit_and_check(impl_cast.target);
+}
+
+SIRNodeId JLLoweringVisitor::visit_ExplicitCast(ExplicitCast& expl_cast) {
+    SIRNodeId inner = visit_and_check(expl_cast.target);
+    return emplace_node<sir::ExplicitCast>(expl_cast.location, expl_cast.type, inner);
+}
+
+SIRNodeId JLLoweringVisitor::visit_DeclRefExpr(DeclRefExpr& dre) {
+    assert(ctx.isa<Decl>(dre.decl));
+
+    Decl* decl        = ctx.get_and_dyn_cast<Decl>(dre.decl);
+    SIRNodeId decl_id = SIRNodeId::null_id();
+
+    auto it = decl_map.find(decl);
+    if (it != decl_map.end())
+        decl_id = it->second;
+    else
+        decl_id = visit_and_check(dre.decl);
+
+    assert(!decl_id.is_null());
+
+    return emplace_node<sir::DeclRefExpr>(dre.location, decl_id, dre.type);
+}
+
 SIRNodeId JLLoweringVisitor::visit_IndexerExpr(IndexerExpr& idx_expr) {
     SIRNodeId lowered_target = visit(idx_expr.target);
     if (lowered_target.is_null())
@@ -424,54 +483,16 @@ SIRNodeId JLLoweringVisitor::visit_IndexerExpr(IndexerExpr& idx_expr) {
                             type_to_string(target_td, sir_ctx, sir_ctx)));
 }
 
-SIRNodeId JLLoweringVisitor::visit_StringLiteral([[maybe_unused]] StringLiteral& lit) {
-    return internal_error("unsupported String literal node not caught by sema");
+SIRNodeId JLLoweringVisitor::visit_FieldAccess(FieldAccess& acc) {
+    return emplace_node<sir::FieldAccess>(acc.location, visit_and_check(acc.target),
+                                          visit_and_check(acc.field_decl));
 }
 
-SIRNodeId JLLoweringVisitor::visit_SymbolLiteral([[maybe_unused]] SymbolLiteral& lit) {
-    return internal_error("symbol literal in AST should have been resolved by sema");
-}
+SIRNodeId JLLoweringVisitor::visit_DotChain(DotChain& dc) {
+    if (!dc.is_resolved())
+        return internal_error("dot chain expression not resolved by sema");
 
-SIRNodeId JLLoweringVisitor::visit_ModuleLookup([[maybe_unused]] ModuleLookup& ml) {
-    return internal_error("module lookup in AST should have been resolved by sema");
-}
-
-SIRNodeId JLLoweringVisitor::visit_NothingLiteral([[maybe_unused]] NothingLiteral& lit) {
-    throw std::logic_error{"using nothing literal outside of a return stmt"};
-}
-
-SIRNodeId JLLoweringVisitor::visit_OpaqueNode([[maybe_unused]] OpaqueNode& opaq) {
-    return internal_error("OpaqueNode node not caught by sema");
-}
-
-SIRNodeId JLLoweringVisitor::visit_GlobalRef([[maybe_unused]] GlobalRef& gref) {
-    throw std::logic_error{"using unimplemented feature: global refs"};
-}
-
-SIRNodeId JLLoweringVisitor::visit_ImplicitCast(ImplicitCast& impl_cast) {
-    return visit_and_check(impl_cast.target);
-}
-
-SIRNodeId JLLoweringVisitor::visit_ExplicitCast(ExplicitCast& expl_cast) {
-    SIRNodeId inner = visit_and_check(expl_cast.target);
-    return emplace_node<sir::ExplicitCast>(expl_cast.location, expl_cast.type, inner);
-}
-
-SIRNodeId JLLoweringVisitor::visit_DeclRefExpr(DeclRefExpr& dre) {
-    assert(ctx.isa<Decl>(dre.decl));
-
-    Decl* decl        = ctx.get_and_dyn_cast<Decl>(dre.decl);
-    SIRNodeId decl_id = SIRNodeId::null_id();
-
-    auto it = decl_map.find(decl);
-    if (it != decl_map.end())
-        decl_id = it->second;
-    else
-        decl_id = visit_and_check(dre.decl);
-
-    assert(!decl_id.is_null());
-
-    return emplace_node<sir::DeclRefExpr>(dre.location, decl_id);
+    return visit_and_check(dc.resolved_expr);
 }
 
 SIRNodeId JLLoweringVisitor::visit_Assignment(Assignment& assign) {
@@ -500,28 +521,59 @@ SIRNodeId JLLoweringVisitor::visit_FunctionCall(FunctionCall& fn_call) {
     using BinOpKind = sir::BinaryOp::OpKind;
     using UnOpKind  = sir::UnaryOp::OpKind;
 
-    auto* dre = ctx.get_and_dyn_cast<DeclRefExpr>(fn_call.target_fn);
+    auto* target_fn_expr = ctx.get_node(fn_call.target_fn);
 
-    if (dre == nullptr)
+    auto* dre = dyn_cast<DeclRefExpr>(target_fn_expr);
+    auto* dc  = dyn_cast<DotChain>(target_fn_expr);
+
+    if (dre == nullptr && dc == nullptr)
         return internal_error(
-            "non-declaration-reference node in FunctionCall's target_fn not caught by sema");
+            "non-decl-ref, non-dot-chain node in FunctionCall's target_fn not caught by sema");
 
-    SymbolId fn_identifier = SymbolId::null_id();
+    if (dre != nullptr) {
+        if (ctx.isa<SymbolLiteral>(dre->decl))
+            return internal_error("unresolved declaration reference expression found post-sema");
+    }
 
-    bool is_ctor   = false;
-    auto decl_expr = ctx.get_node(dre->decl);
-    if (auto* decl = dyn_cast<FunctionDecl>(decl_expr))
+    if (dc != nullptr) {
+        std::string mod_path =
+            mod_chain_to_path(dc->chain, ctx, sir_ctx.sym_pool, dc->chain.size() - 1);
+
+        auto& mod_cache = ctx.jl_env.module_cache;
+
+        auto maybe_mod = mod_cache.get_mod(mod_path);
+        if (!maybe_mod.has_value())
+            return internal_error("dot chain with invalid method path not caught by sema");
+
+        const auto& mod = maybe_mod->get();
+
+        bool valid_mod = mod.mod_ptr() == mod_cache.base_mod.mod_ptr() ||
+                         mod.mod_ptr() == mod_cache.glm_mod.mod_ptr() ||
+                         mod.mod_ptr() == mod_cache.main_mod.mod_ptr();
+        if (!valid_mod)
+            return fail("cannot lower call to module-resolved function not available from Main, "
+                        "Base or JuliaGLM");
+    }
+
+    auto decl_expr = ctx.get_node(dre != nullptr ? dre->decl : dc->resolved_expr);
+
+    auto fn_identifier = SymbolId::null_id();
+    bool is_ctor       = false;
+
+    if (auto* decl = dyn_cast<FunctionDecl>(decl_expr)) {
         fn_identifier = decl->identifier;
-    else if (auto* builtin = dyn_cast<BuiltinFunction>(decl_expr))
+    } else if (auto* builtin = dyn_cast<BuiltinFunction>(decl_expr)) {
         fn_identifier = builtin->fn_name();
-    else if (auto* opaq = dyn_cast<OpaqueFunction>(decl_expr)) {
+    } else if (auto* s_decl = dyn_cast<StructDecl>(decl_expr)) {
+        fn_identifier = s_decl->identifier;
+        is_ctor       = true;
+    } else if (auto* opaq = dyn_cast<OpaqueFunction>(decl_expr)) {
         fn_identifier = opaq->fn_name();
         is_ctor       = opaq->is_ctor();
-    } else if (ctx.isa<SymbolLiteral>(dre->decl))
-        return internal_error("unresolved declaration reference expression found post-sema");
-    else
+    } else {
         return internal_error(
             "unexpected declaration kind referenced in target of a function call");
+    }
 
     if (fn_identifier.is_null())
         return internal_error("couldn't determine identifier for the target of a function call");

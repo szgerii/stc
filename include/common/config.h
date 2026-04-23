@@ -19,6 +19,8 @@ struct TranspilerConfig {
     bool forward_fns                 = true;
     bool warn_on_fn_forward          = false;
     bool print_conv_fail_reason      = false;
+    bool coerce_to_f32               = true;
+    bool coerce_to_i32               = true;
 };
 
 } // namespace stc

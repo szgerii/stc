@@ -47,6 +47,9 @@ TypeId JLParser::resolve_type(jl_value_t* type) {
         static_assert((sizeof(void*) == 4U || sizeof(void*) == 8U) &&
                       "unsupported environment (sizeof(void*) is not 32 or 64 bits)");
 
+        if (tsym == sym_cache.Int && ctx.config.coerce_to_i32)
+            return ctx.jl_Int32_t();
+
         if constexpr (sizeof(void*) == 4U) {
             if (tsym == sym_cache.Int)
                 return ctx.jl_Int32_t();
@@ -188,13 +191,24 @@ NodeId JLParser::parse(jl_value_t* node) {
     }
 
     HANDLE_LITERAL(int32, int32_t, Int32Literal)
-    HANDLE_LITERAL(int64, int64_t, Int64Literal)
     HANDLE_LITERAL(uint8, uint8_t, UInt8Literal)
     HANDLE_LITERAL(uint16, uint16_t, UInt16Literal)
     HANDLE_LITERAL(uint32, uint32_t, UInt32Literal)
     HANDLE_LITERAL(uint64, uint64_t, UInt64Literal)
 
 #undef HANDLE_LITERAL
+
+    if (jl_is_int64(node)) {
+        constexpr int64_t i32_min = static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+        constexpr int64_t i32_max = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+
+        int64_t value = jl_unbox_int64(node);
+
+        if (ctx.config.coerce_to_i32 && i32_min <= value && value <= i32_max)
+            return emplace_node<Int32Literal>(cur_loc, static_cast<int32_t>(value));
+        else
+            return emplace_node<Int64Literal>(cur_loc, value);
+    }
 
     // TODO: TEST ON SOME BE VM!!
     if (jl_typeis(node, ctx.jl_env.type_cache.uint128)) {
@@ -223,6 +237,9 @@ NodeId JLParser::parse(jl_value_t* node) {
 
     if (jl_typeis(node, jl_float64_type)) {
         double value = jl_unbox_float64(node);
+
+        if (ctx.config.coerce_to_f32)
+            return emplace_node<Float32Literal>(cur_loc, static_cast<float>(value));
 
         return emplace_node<Float64Literal>(cur_loc, value);
     }
@@ -278,10 +295,10 @@ NodeId JLParser::parse_code(std::string_view code) {
 }
 
 std::pair<jl_value_t*, TypeId> JLParser::parse_type_annotation(jl_expr_t* annot) {
-    assert(annot->head == sym_cache.double_col);
+    assert(annot->head == sym_cache.dbl_col);
 
     if (jl_expr_nargs(annot) != 2) {
-        internal_error("unexpected type annotation layout");
+        internal_error("unexpected type annotation layout (more or less than two args)");
         return {nullptr, TypeId::null_id()};
     }
 
@@ -333,6 +350,9 @@ NodeId JLParser::parse_expr(jl_expr_t* expr) {
     if (head == sym_cache.dbl_amper || head == sym_cache.dbl_pipe)
         return parse_log_op(expr, nargs);
 
+    if (head == sym_cache.struct_)
+        return parse_struct(expr, nargs);
+
     if (head == sym_cache.break_)
         return emplace_node<BreakStmt>(cur_loc);
 
@@ -353,7 +373,7 @@ NodeId JLParser::parse_expr(jl_expr_t* expr) {
 
 NodeId JLParser::parse_var_decl(jl_expr_t* expr, size_t nargs) {
     assert(expr->head == sym_cache.global || expr->head == sym_cache.local ||
-           expr->head == sym_cache.eq || expr->head == sym_cache.double_col);
+           expr->head == sym_cache.eq || expr->head == sym_cache.dbl_col);
 
     SrcLocationId decl_loc = cur_loc;
 
@@ -381,7 +401,7 @@ NodeId JLParser::parse_var_decl(jl_expr_t* expr, size_t nargs) {
         init  = jl_exprarg(assignment_expr, 1);
     }
 
-    if (auto* typed_expr = is_expr(inner, sym_cache.double_col)) {
+    if (auto* typed_expr = is_expr(inner, sym_cache.dbl_col)) {
         if (jl_expr_nargs(typed_expr) != 2)
             return internal_error("type annotation expression with more/less than two args");
 
@@ -430,7 +450,7 @@ NodeId JLParser::parse_method_decl(jl_expr_t* expr, size_t nargs) {
 
     TypeId expl_ret_type = TypeId::null_id();
     // function f()::Int ... end
-    if (header->head == sym_cache.double_col) {
+    if (header->head == sym_cache.dbl_col) {
         auto [node, type] = parse_type_annotation(header);
 
         // assumes error has already been reported, only propagates failure
@@ -524,7 +544,7 @@ NodeId JLParser::parse_param_decl(jl_value_t* param) {
         if (param_expr->head == sym_cache.dots)
             return error("variadic arguments are currently not supported");
 
-        if (param_expr->head == sym_cache.double_col) {
+        if (param_expr->head == sym_cache.dbl_col) {
             auto [inner, annot_type] = parse_type_annotation(param_expr);
 
             type  = annot_type;
@@ -553,7 +573,7 @@ NodeId JLParser::parse_assignment(jl_expr_t* expr, size_t nargs) {
         return parse_method_decl(expr, nargs);
 
     // x::Int = 0
-    if (is_expr(lhs, sym_cache.double_col))
+    if (is_expr(lhs, sym_cache.dbl_col))
         return parse_var_decl(expr, nargs);
 
     SrcLocationId outer_loc = cur_loc;
@@ -687,57 +707,35 @@ NodeId JLParser::parse_dot_chain(jl_expr_t* expr, size_t nargs) {
     jl_value_t* current_lhs = jl_exprarg(expr, 0);
     jl_value_t* current_rhs = jl_exprarg(expr, 1);
 
-    auto sym_lit_from_dre = [&](NodeId parsed_node) {
-        auto* dre = ctx.get_and_dyn_cast<DeclRefExpr>(parsed_node);
-        if (dre == nullptr)
-            return internal_error("parser returned non-decl-ref-expr node for symbol/quotenode");
-
-        NodeId sym_lit = dre->decl;
-        assert(ctx.isa<SymbolLiteral>(sym_lit) && "non-sym-lit node in parsed dre");
-
-        return sym_lit;
-    };
-
     std::vector<NodeId> lookup_chain{};
     bool is_done = false;
     while (!is_done) {
-        if (!jl_is_symbol(current_rhs) && !jl_is_quotenode(current_rhs))
-            return internal_error(
-                "unexpected dot expr layout (rhs is neither a Symbol or a QuoteNode)");
-
         NodeId parsed_rhs = parse(current_rhs);
-        lookup_chain.emplace_back(sym_lit_from_dre(parsed_rhs));
+        lookup_chain.emplace_back(parsed_rhs);
 
-        if (jl_is_symbol(current_lhs) || jl_is_quotenode(current_lhs)) {
+        if (!is_expr(current_lhs, sym_cache.dot)) {
             NodeId parsed_lhs = parse(current_lhs);
+            lookup_chain.emplace_back(parsed_lhs);
 
-            lookup_chain.emplace_back(sym_lit_from_dre(parsed_lhs));
             is_done = true;
             continue;
         }
 
-        if (is_expr(current_lhs, sym_cache.dot)) {
-            jl_expr_t* lhs_expr = safe_cast<jl_expr_t>(current_lhs);
+        jl_expr_t* lhs_expr = safe_cast<jl_expr_t>(current_lhs);
+        assert(lhs_expr->head == sym_cache.dot);
 
-            if (jl_expr_nargs(lhs_expr) != 2)
-                return internal_error("unexpected dot expr layout (more or less than two args)");
+        if (jl_expr_nargs(lhs_expr) != 2)
+            return internal_error("unexpected dot expr layout (more or less than two args)");
 
-            current_lhs = jl_exprarg(lhs_expr, 0);
-            current_rhs = jl_exprarg(lhs_expr, 1);
-            continue;
-        }
-
-        // e.g. fn_that_returns_a_mod().some_var
-        return error(
-            "module lookup chains (dot expressions) containg non-symbol nodes are not allowed");
+        current_lhs = jl_exprarg(lhs_expr, 0);
+        current_rhs = jl_exprarg(lhs_expr, 1);
     }
 
     // chains are a recursive structure, so the above flattening creates the reversed version of the
     // resulting chain
     std::reverse(lookup_chain.begin(), lookup_chain.end());
 
-    NodeId mod_lookup = emplace_node<ModuleLookup>(cur_loc, std::move(lookup_chain));
-    return emplace_node<DeclRefExpr>(cur_loc, mod_lookup);
+    return emplace_node<DotChain>(cur_loc, std::move(lookup_chain));
 }
 
 NodeId JLParser::parse_vect(jl_expr_t* expr, size_t nargs) {
@@ -779,6 +777,117 @@ NodeId JLParser::parse_ref(jl_expr_t* expr, size_t nargs) {
     }
 
     return emplace_node<IndexerExpr>(base_loc, target, std::move(indexers));
+}
+
+NodeId JLParser::parse_struct(jl_expr_t* expr, size_t nargs) {
+    assert(expr->head == sym_cache.struct_);
+
+    if (nargs != 3)
+        return internal_error("unexpected struct definition layout (more or less than three args)");
+
+    SrcLocationId struct_loc = cur_loc;
+
+    jl_value_t* is_mutable_arg  = jl_exprarg(expr, 0);
+    jl_value_t* struct_id_arg   = jl_exprarg(expr, 1);
+    jl_value_t* field_decls_arg = jl_exprarg(expr, 2);
+
+    if (!jl_is_bool(is_mutable_arg))
+        return internal_error("unexpected struct definition layout (first arg is non-bool)");
+
+    bool is_mutable = jl_unbox_bool(is_mutable_arg);
+
+    if (!jl_is_symbol(struct_id_arg)) {
+        if (!jl_is_expr(struct_id_arg))
+            return internal_error(
+                "unexpected struct definition layout (second arg is non-symbol, non-expr)");
+
+        jl_expr_t* struct_id_expr = safe_cast<jl_expr_t>(struct_id_arg);
+        assert(struct_id_expr != nullptr);
+
+        if (struct_id_expr->head == sym_cache.curly)
+            return error("parametric composite types are not supported");
+
+        if (struct_id_expr->head == sym_cache.subtype_op)
+            return error("composite subtypes are not supported");
+
+        return internal_error(
+            "unexpected struct definition layout (second arg is an expr, but not {T} or <:)");
+    }
+
+    std::string_view struct_id{jl_symbol_name(safe_cast<jl_sym_t>(struct_id_arg))};
+    SymbolId struct_id_sym = ctx.sym_pool.get_id(struct_id);
+
+    if (!ctx.type_pool.get_struct_td(struct_id_sym).is_null())
+        return error(std::format("multiple definitions found for type '{}'", struct_id));
+
+    if (!jl_is_expr(field_decls_arg))
+        return internal_error("unexpected struct definition layout (third arg is non-expr)");
+
+    jl_expr_t* field_decls_block = safe_cast<jl_expr_t>(field_decls_arg);
+    if (field_decls_block == nullptr || field_decls_block->head != sym_cache.block)
+        return internal_error(
+            "unexpected struct definition layout (third arg is a non-block expr)");
+
+    size_t fields_block_nargs = jl_expr_nargs(field_decls_block);
+
+    std::vector<StructData::FieldInfo> field_infos{};
+    field_infos.reserve(fields_block_nargs);
+
+    std::unordered_set<SymbolId> field_names{};
+    field_names.reserve(fields_block_nargs);
+
+    auto [sdecl_id, sdecl] =
+        ctx.emplace_node<StructDecl>(struct_loc, struct_id_sym, std::vector<NodeId>{}, is_mutable);
+    sdecl->field_decls.reserve(fields_block_nargs);
+
+    for (size_t i = 0; i < fields_block_nargs; i++) {
+        jl_value_t* field_decl_v = jl_exprarg(field_decls_block, i);
+
+        if (jl_is_linenumbernode(field_decl_v)) {
+            // make sure cur_loc is updated
+            [[maybe_unused]] NodeId ln_node = parse(field_decl_v);
+            assert(ln_node.is_null());
+            continue;
+        }
+
+        if (jl_is_symbol(field_decl_v))
+            return error("field declaration without explicit type annotation is not allowed");
+
+        jl_expr_t* field_decl_expr =
+            jl_is_expr(field_decl_v) ? safe_cast<jl_expr_t>(field_decl_v) : nullptr;
+
+        if (field_decl_expr == nullptr || field_decl_expr->head != sym_cache.dbl_col)
+            return error("only typed field declarations are supported inside struct definitions, "
+                         "inner constructors are not allowed");
+
+        auto [field_id_v, field_type] = parse_type_annotation(field_decl_expr);
+
+        if (field_id_v == nullptr || field_type.is_null())
+            continue;
+
+        if (!jl_is_symbol(field_id_v))
+            return internal_error("unexpected field declaration layout (lhs is not a symbol)");
+
+        std::string_view field_id{jl_symbol_name(safe_cast<jl_sym_t>(field_id_v))};
+        SymbolId field_id_sym = ctx.sym_pool.get_id(field_id);
+
+        bool inserted = field_names.emplace(field_id_sym).second;
+        if (!inserted)
+            return error("struct with repeated field names is not allowed");
+
+        NodeId parsed_decl = emplace_node<FieldDecl>(cur_loc, field_id_sym, field_type);
+        assert(!parsed_decl.is_null());
+
+        sdecl->field_decls.emplace_back(parsed_decl);
+        field_infos.emplace_back(field_id_sym, field_type);
+    }
+
+    sdecl->field_decls.shrink_to_fit();
+    field_infos.shrink_to_fit();
+
+    ctx.type_pool.make_struct_td(struct_id_sym, std::move(field_infos), ctx);
+
+    return sdecl_id;
 }
 
 NodeId JLParser::parse_log_op(jl_expr_t* expr, size_t nargs) {

@@ -73,7 +73,7 @@ private:
         if (src_decl == nullptr)
             throw std::logic_error{"Source declaration cannot be null"};
 
-        if (decl_map.contains(src_decl))
+        if (!isa<FieldDecl>(src_decl) && decl_map.contains(src_decl))
             throw std::logic_error{std::format("Trying to lower declaration for symbol '{}', but "
                                                "it already has a lowered match",
                                                sir_ctx.get_sym(src_decl->identifier))};

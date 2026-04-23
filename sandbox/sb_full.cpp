@@ -189,7 +189,10 @@ int main(int argc, char* argv[]) {
             config.forward_fns = true;
         else if (arg == "--conv-fail-reason")
             config.print_conv_fail_reason = true;
-        else if (arg == "-Wfwd-fns")
+        else if (arg == "--no-coercion") {
+            config.coerce_to_i32 = false;
+            config.coerce_to_f32 = false;
+        } else if (arg == "-Wfwd-fns")
             config.warn_on_fn_forward = true;
         else if (arg == "-Wjl-query")
             config.warn_on_jl_sema_query = true;

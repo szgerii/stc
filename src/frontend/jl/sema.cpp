@@ -160,6 +160,28 @@ void JLSema::finalize() {
         return;
     }
 
+    if (ctx.config.dump_scopes) {
+        std::cout << "scope dump before popping global scope:\n";
+        scopes[0].dump(ctx);
+    }
+
+    assert(&current_scope() == &global_scope());
+
+    if (!main_fn_decl.is_null()) {
+        const auto* main_fn = ctx.get_and_dyn_cast<FunctionDecl>(main_fn_decl);
+        assert(main_fn != nullptr);
+
+        if (main_fn->methods.size() == 1) {
+            const auto* mdecl = ctx.get_and_dyn_cast<MethodDecl>(main_fn->methods[0]);
+            assert(mdecl != nullptr);
+
+            if (mdecl->ret_type != ctx.jl_Nothing_t() || !mdecl->param_decls.empty())
+                fail("reserved function 'main' must return void, and take no parameters", *mdecl);
+        } else {
+            fail("reserved function 'main' cannot have more than method defined", *main_fn);
+        }
+    }
+
     pop_scope(true);
 }
 
@@ -185,7 +207,8 @@ bool JLSema::mangle_scope(JLScope& scope) {
             return false;
         }
 
-        bool rewrite = isa<VarDecl>(decl) || isa<ParamDecl>(decl) || isa<MethodDecl>(decl);
+        bool is_fn_decl = isa<FunctionDecl>(decl);
+        bool rewrite    = isa<VarDecl>(decl) || isa<ParamDecl>(decl) || is_fn_decl;
         if (!rewrite)
             continue;
 
@@ -196,6 +219,21 @@ bool JLSema::mangle_scope(JLScope& scope) {
         }
 
         decl->identifier = usym;
+
+        if (is_fn_decl) {
+            auto* fn_decl = dyn_cast<FunctionDecl>(decl);
+            assert(fn_decl != nullptr);
+
+            if (fn_decl->identifier == sym_main)
+                continue;
+
+            for (NodeId mdecl_id : fn_decl->methods) {
+                auto* mdecl = ctx.get_and_dyn_cast<MethodDecl>(mdecl_id);
+                assert(mdecl != nullptr);
+
+                mdecl->identifier = usym;
+            }
+        }
     }
 
     return true;
@@ -282,11 +320,19 @@ JLSema::TypeCheckResult JLSema::check_type_against(TypeId actual_type, TypeId ch
 
     // if expected fn type has an identifier, actual has to match it
     // if it doesnt, only the function-ness of the actual type is checked
-    if (expected_td.is_function() && actual_td.get().is_function()) {
+    if (expected_td.is_function() &&
+        (actual_td.get().is_function() || actual_td.get().is_struct())) {
         auto expected_fn = expected_td.as<FunctionTD>();
 
-        if (expected_fn.identifier.is_null() ||
-            expected_fn.identifier == actual_td.get().as<FunctionTD>().identifier)
+        SymbolId actual_id = SymbolId::null_id();
+        if (actual_td.get().is_function())
+            actual_id = actual_td.get().as<FunctionTD>().identifier;
+        else {
+            assert(actual_td.get().as<StructTD>().data != nullptr);
+            actual_id = actual_td.get().as<StructTD>().data->name;
+        }
+
+        if (expected_fn.identifier.is_null() || expected_fn.identifier == actual_id)
             return TypeCheckResult::Ok;
 
         return TypeCheckResult::Failure;
@@ -669,6 +715,14 @@ TypeId JLSema::visit_BuiltinFunction(BuiltinFunction& builtin_fn) {
 TypeId JLSema::visit_FunctionDecl(FunctionDecl& fn_decl) {
     if (fn_decl.identifier.is_null())
         return internal_error("function declaration with null as the identifier symbol", fn_decl);
+
+    if (fn_decl.identifier == sym_main) {
+        if (&current_scope() != &global_scope())
+            return fail("function name 'main' is reserved for global-level declarations only",
+                        fn_decl);
+
+        main_fn_decl = ctx.calculate_node_id(fn_decl);
+    }
 
     return tpool.func_td(fn_decl.identifier);
 }
@@ -1077,10 +1131,6 @@ void JLSema::visit_method_body(MethodDecl& method) {
         bool added = st_register(pdecl.identifier, pdecl_id);
         if (!added) {
             assert(!_success);
-            // this should have been reported by paramdecl visitor already
-            // fail(std::format("redeclaration of symbol '{}' in the same scope (as a parameter)",
-            //                  ctx.get_sym(pdecl.identifier)),
-            //      pdecl);
             any_failed = true;
         }
     }
@@ -1137,14 +1187,44 @@ void JLSema::visit_method_body(MethodDecl& method) {
     current_fn_ret = prev_ret;
 }
 
-// TODO: structs
-
 TypeId JLSema::visit_FieldDecl(FieldDecl& fdecl) {
-    return fail("Structs are not currently supported", fdecl);
+    if (fdecl.type.is_null())
+        return fail("field declarations without an explicit type annotation are not supported",
+                    fdecl);
+
+    const auto& td = tpool.get_td(fdecl.type);
+    bool valid_field_type =
+        td.is_scalar() || td.is_vector() || td.is_matrix() || td.is_matrix() || td.is_array();
+
+    if (!valid_field_type) {
+        return fail(
+            std::format("field declarations with type {} are not supported", type_str(fdecl.type)),
+            fdecl);
+    }
+
+    return fdecl.type;
 }
 
 TypeId JLSema::visit_StructDecl(StructDecl& sdecl) {
-    return fail("Structs are not currently supported", sdecl);
+    TypeId s_type = tpool.get_struct_td(sdecl.identifier);
+
+    if (s_type.is_null())
+        return internal_error("struct's type has not been registered by parser", sdecl);
+
+    if (&current_scope() != &global_scope()) {
+        return fail(std::format("definition of struct '{}' in non-global scope is not allowed",
+                                ctx.get_sym(sdecl.identifier)),
+                    sdecl);
+    }
+
+    bool added = st_register(sdecl.identifier, ctx.calculate_node_id(sdecl));
+    if (!added) {
+        return fail(std::format("redefinition of struct '{}' is not allowed",
+                                ctx.get_sym(sdecl.identifier)),
+                    sdecl);
+    }
+
+    return s_type;
 }
 
 TypeId JLSema::visit_CompoundExpr(CompoundExpr& cmpd) {
@@ -1261,6 +1341,7 @@ TypeId JLSema::visit_CompoundExpr(CompoundExpr& cmpd) {
 // TODO: value checks for some of these
 DEFINE_LIT(Bool)
 DEFINE_LIT(Int32)
+DEFINE_LIT(Int64)
 DEFINE_LIT(UInt8)
 DEFINE_LIT(UInt16)
 DEFINE_LIT(UInt32)
@@ -1270,18 +1351,6 @@ DEFINE_LIT(Float32)
 DEFINE_LIT(Float64)
 
 #undef DEFINE_LIT
-
-TypeId JLSema::visit_Int64Literal(Int64Literal& i64_lit) {
-    constexpr int32_t i32_min = std::numeric_limits<int32_t>::min();
-    constexpr int32_t i32_max = std::numeric_limits<int32_t>::max();
-
-    // coerce i64 literals into i32 whenever possible
-    if (i32_min <= i64_lit.value && i64_lit.value <= i32_max) {
-        return ctx.jl_Int32_t();
-    }
-
-    return ctx.jl_Int64_t();
-}
 
 TypeId JLSema::visit_StringLiteral(StringLiteral& str_lit) {
     if (!visiting_indexer)
@@ -1325,8 +1394,10 @@ TypeId JLSema::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
         return fail("failed to infer element type for first element of array literal", arr_lit);
 
     bool any_check_failed = false;
-    for (size_t i = 1; i < arr_lit.members.size(); i++)
-        any_check_failed = any_check_failed || !check(arr_lit.members[i], inferred_el_type);
+    for (size_t i = 1; i < arr_lit.members.size(); i++) {
+        bool member_valid = check(arr_lit.members[i], inferred_el_type);
+        any_check_failed  = any_check_failed || !member_valid;
+    }
 
     if (any_check_failed)
         return fail("array literal with varying element type is not allowed", arr_lit);
@@ -1477,9 +1548,133 @@ TypeId JLSema::visit_SymbolLiteral(SymbolLiteral& sym) {
                 sym);
 }
 
-TypeId JLSema::visit_ModuleLookup(ModuleLookup& ml) {
-    return internal_error(
-        "sema pass reached a module lookup \"leaf subtree\", which should never happen", ml);
+TypeId JLSema::visit_FieldAccess(FieldAccess& acc) {
+    if (!acc.type.is_null())
+        return acc.type;
+
+    TypeId target_ty      = infer(acc.target);
+    const auto& target_td = tpool.get_td(target_ty);
+
+    if (!target_td.is_struct())
+        return fail(
+            std::format("field access into invalid or unsupported type {}", type_str(target_ty)),
+            acc);
+
+    const auto& s_td = target_td.as<StructTD>();
+    assert(s_td.data != nullptr);
+
+    NodeId sdecl_id = global_scope().st_find_sym(s_td.data->name);
+
+    if (sdecl_id.is_null() || !ctx.isa<StructDecl>(sdecl_id))
+        return internal_error(
+            std::format("couldn't find struct type declaration in global scope for {}",
+                        type_str(target_ty)),
+            acc);
+
+    const auto* sdecl = ctx.get_and_dyn_cast<StructDecl>(sdecl_id);
+    assert(sdecl != nullptr);
+
+    if (sdecl->type != target_ty) {
+        return internal_error("desynchronization between type pool's struct list and "
+                              "sema's symbol table",
+                              acc);
+    }
+
+    auto* target_sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(acc.field_decl);
+    if (target_sym_lit == nullptr)
+        return internal_error("unexpected node kind in rhs of a FieldAccess expression", acc);
+
+    for (size_t i = 0; i < sdecl->field_decls.size(); i++) {
+        const auto* fdecl = ctx.get_and_dyn_cast<FieldDecl>(sdecl->field_decls[i]);
+        assert(fdecl != nullptr);
+
+        if (fdecl->identifier == target_sym_lit->value) {
+            acc.field_decl       = sdecl->field_decls[i];
+            acc.target_type_decl = sdecl_id;
+
+            return fdecl->type;
+        }
+    }
+
+    return fail(std::format("{} has no field with identifier '{}'", type_str(sdecl->type),
+                            ctx.get_sym(target_sym_lit->value)),
+                acc);
+}
+
+TypeId JLSema::visit_DotChain(DotChain& dc) {
+    using namespace rt;
+
+    if (dc.is_resolved())
+        return ctx.get_node(dc.resolved_expr)->type;
+
+    if (dc.chain.empty())
+        return fail("malformed dot chain expression", dc);
+
+    if (is_checking() && tpool.is_any_func(expected_type)) {
+        std::string mod_path = mod_chain_to_path(dc.chain, ctx, dc.chain.size() - 1);
+
+        auto mod = ctx.jl_env.module_cache.get_mod(mod_path);
+
+        if (!mod.has_value())
+            return fail(std::format("invalid dot chain, couldn't resolve module at '{}'", mod_path),
+                        dc);
+
+        const auto* sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(dc.chain.back());
+        if (sym_lit == nullptr) {
+            const auto* dre = ctx.get_and_dyn_cast<DeclRefExpr>(dc.chain.back());
+
+            if (dre != nullptr)
+                sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(dre->decl);
+        }
+
+        if (sym_lit == nullptr)
+            return internal_error("unexpected node kind in dot chain", dc);
+
+        jl_function_t* jl_fn = mod->get().get_fn(ctx.get_sym(sym_lit->value), false);
+        if (jl_fn == nullptr)
+            return fail(std::format("no function with name '{}' was found in module '{}'",
+                                    ctx.get_sym(sym_lit->value), mod_path),
+                        dc);
+
+        SymbolId fn_name_id = ctx.sym_pool.get_id(get_jl_fn_name(jl_fn));
+
+        dc.resolved_expr = ctx.emplace_node<OpaqueFunction>(dc.location, fn_name_id, jl_fn).first;
+        infer(dc.resolved_expr);
+
+        return tpool.func_td(fn_name_id);
+    }
+
+    if (dc.chain.size() == 2) {
+        auto* field_expr = ctx.get_node(dc.chain[1]);
+        auto* sym_lit    = dyn_cast<SymbolLiteral>(field_expr);
+
+        if (sym_lit == nullptr) {
+            auto* dre = dyn_cast<DeclRefExpr>(field_expr);
+
+            if (dre != nullptr)
+                sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(dre->decl);
+        }
+
+        if (sym_lit == nullptr)
+            return fail(
+                "non-symbol-literal node is not allowed as the rhs of a field access expression",
+                dc);
+
+        auto [acc_id, acc] = ctx.emplace_node<FieldAccess>(dc.location, dc.chain[0],
+                                                           ctx.calculate_node_id(*sym_lit));
+
+        if (is_checking())
+            check(acc_id);
+        else
+            infer(acc_id);
+
+        dc.resolved_expr = acc_id;
+        return acc->type;
+    }
+
+    return fail("dot chain used in an unsupported context (currently only field access and "
+                "function targeting module lookup are supported)",
+                dc);
 }
 
 TypeId JLSema::visit_NothingLiteral([[maybe_unused]] NothingLiteral& lit) {
@@ -1521,54 +1716,16 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
         return fail("global refs are currently not supported", *gref);
 
     auto* sym = dyn_cast<SymbolLiteral>(inner);
-    auto* ml  = dyn_cast<ModuleLookup>(inner);
-    if (sym == nullptr && ml == nullptr)
+    if (sym == nullptr)
         return internal_error("declaration reference expression points to invalid node kind", dre);
 
-    if (ml != nullptr) {
-        if (!tpool.is_any_func(expected_type))
-            return fail("module lookups are currently only supported for function resolutions",
-                        dre);
-
-        if (ml->chain.empty())
-            return internal_error(
-                "empty module lookup as target of a declaration reference expression", *ml);
-
-        std::string mod_path = mod_chain_to_path(ml->chain, ctx, ml->chain.size() - 1);
-
-        auto mod = ctx.jl_env.module_cache.get_mod(mod_path);
-
-        if (!mod.has_value())
-            return fail(
-                std::format("invalid module lookup chain, couldn't resolve target module for '{}'",
-                            mod_path),
-                *ml);
-
-        auto* sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(ml->chain.back());
-        if (sym_lit == nullptr)
-            return internal_error("unexpected non-symbol-literal node in module lookup chain", *ml);
-
-        jl_function_t* jl_fn = mod->get().get_fn(ctx.get_sym(sym_lit->value), false);
-        if (jl_fn == nullptr)
-            return fail(std::format("no function with name '{}' was found in module '{}'",
-                                    ctx.get_sym(sym_lit->value), mod_path),
-                        *ml);
-
-        SymbolId fn_name_id = ctx.sym_pool.get_id(get_jl_fn_name(jl_fn));
-
-        dre.decl = ctx.emplace_node<OpaqueFunction>(dre.location, fn_name_id, jl_fn).first;
-        infer(dre.decl);
-
-        return tpool.func_td(fn_name_id);
-    }
-
-    auto fn_name_str = ctx.get_sym(sym->value);
-    auto maybe_bt    = binding_of(sym->value);
+    auto sym_str  = ctx.get_sym(sym->value);
+    auto maybe_bt = binding_of(sym->value);
 
     if (!maybe_bt.has_value())
         return internal_error(std::format("symbol resolution pass failed to infer binding type for "
                                           "symbol '{}' in a declaration",
-                                          fn_name_str),
+                                          sym_str),
                               *sym);
 
     bool is_captured   = *maybe_bt == BindingType::Captured;
@@ -1585,7 +1742,7 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
     }
 
     if (is_captured) {
-        return fail(std::format("forward capture of symbol '{}' is not allowed", fn_name_str), dre);
+        return fail(std::format("forward capture of symbol '{}' is not allowed", sym_str), dre);
     }
 
     bool is_fn_ref = *maybe_bt == BindingType::Global && tpool.is_any_func(expected_type);
@@ -1594,7 +1751,7 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
         // builtins hide calls to jl fns, if they'd have a valid match, while the builtin doesnt
 
         // try to resolve through builtins first
-        if (ctx.target_info != nullptr && ctx.target_info->has_builtin_fn(fn_name_str)) {
+        if (ctx.target_info != nullptr && ctx.target_info->has_builtin_fn(sym_str)) {
             dre.decl = ctx.emplace_node<BuiltinFunction>(dre.location, sym->value).first;
             infer(dre.decl);
 
@@ -1602,15 +1759,15 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
         }
 
         // try to resolve in JuliaGLM before any other module
-        jl_function_t* jl_fn = ctx.jl_env.module_cache.glm_mod.get_fn(fn_name_str, false);
+        jl_function_t* jl_fn = ctx.jl_env.module_cache.glm_mod.get_fn(sym_str, false);
 
         if (jl_fn == nullptr)
-            jl_fn = find_jl_function(fn_name_str, ctx.jl_env, false);
+            jl_fn = find_jl_function(sym_str, ctx.jl_env, false);
 
         if (jl_fn == nullptr) {
             return fail(std::format("couldn't find function '{}' in the symbol table, or in the "
                                     "root julia module",
-                                    fn_name_str),
+                                    sym_str),
                         dre);
         }
 
@@ -1622,7 +1779,7 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
         if (!jl_is_type(jl_fn) && ctx.config.warn_on_jl_sema_query)
             warn(std::format("had to resolve function reference through julia for non-type "
                              "referring symbol '{}'",
-                             fn_name_str),
+                             sym_str),
                  dre);
 
         return tpool.func_td(fn_name);
@@ -1639,7 +1796,7 @@ TypeId JLSema::visit_Assignment(Assignment& assign) {
     if (lhs == nullptr)
         return internal_error("invalid assignment lhs", assign);
 
-    // ! TODO: type might be function type
+    // ! TODO: type might be function or struct type
     if (auto* dre = dyn_cast<DeclRefExpr>(lhs)) {
         Expr* lhs_target = ctx.get_node(dre->decl);
 
@@ -1697,14 +1854,43 @@ TypeId JLSema::visit_Assignment(Assignment& assign) {
             dre->decl = decl_id;
         }
 
-        if (ctx.isa<ModuleLookup>(dre->decl))
-            return fail("assignment to module resolved name is not allowed", assign);
-
         if (ctx.isa<OpaqueFunction>(dre->decl))
             return fail("assignment to Julia-side function is not allowed", assign);
     }
 
     TypeId target_type = infer(assign.target);
+
+    if (const auto* dc = ctx.get_and_dyn_cast<DotChain>(assign.target)) {
+        if (!dc->is_resolved()) {
+            if (_success)
+                fail("couldn't resolve dot chain on assignment lhs", assign);
+
+            return TypeId::null_id();
+        }
+
+        auto* dc_res_node = ctx.get_node(dc->resolved_expr);
+
+        if (const auto* acc = dyn_cast<FieldAccess>(dc_res_node)) {
+            auto* target_decl = ctx.get_and_dyn_cast<Decl>(acc->target_type_decl);
+
+            if (target_decl == nullptr)
+                return internal_error("unresolved target type declaration in FieldAccess node",
+                                      *acc);
+
+            if (const auto* sdecl = dyn_cast<StructDecl>(target_decl)) {
+                if (!sdecl->is_mutable()) {
+                    return fail(
+                        std::format(
+                            "assignment to field of immutable struct type '{}' is not allowed",
+                            ctx.get_sym(sdecl->identifier)),
+                        assign);
+                }
+            }
+        } else {
+            return fail("assignment to non-field-accessing dot chain is not allowed", assign);
+        }
+    }
+
     check(assign.value, target_type);
 
     return target_type;
@@ -1897,46 +2083,70 @@ TypeId JLSema::visit_FunctionCall(FunctionCall& fn_call) {
         return TypeId::null_id();
 
     bool is_valid_fn = check(fn_call.target_fn, tpool.any_func_td());
-    if (!is_valid_fn)
-        return fail("call expression's target couldn't be checked to have function type", fn_call);
+    if (!is_valid_fn) {
+        if (_success)
+            fail("call expression's target couldn't be checked to have function type", fn_call);
 
-    auto* fn_dre = ctx.get_and_dyn_cast<DeclRefExpr>(fn_call.target_fn);
+        return TypeId::null_id();
+    }
 
-    if (fn_dre == nullptr)
+    auto* target_node = ctx.get_node(fn_call.target_fn);
+
+    NodeId target_decl = NodeId::null_id();
+    if (auto* dre = dyn_cast<DeclRefExpr>(target_node))
+        target_decl = dre->decl;
+    else if (auto* dc = dyn_cast<DotChain>(target_node))
+        target_decl = dc->resolved_expr;
+    else
         return internal_error("unexpected node kind as function call's target", fn_call);
+
+    if (target_decl.is_null())
+        return internal_error("empty declaration in function call's target", fn_call);
 
     // exactly one of these should be non-nullptr by the end of resolution
     FunctionDecl* fn_decl       = nullptr;
     OpaqueFunction* opaq_fn     = nullptr;
     BuiltinFunction* builtin_fn = nullptr;
+    StructDecl* struct_decl     = nullptr;
+    bool resolved_fn            = false;
 
-    if (fn_dre->decl.is_null())
-        return internal_error("empty declaration in function call's target", fn_call);
-
-    Expr* decl_expr = ctx.get_node(fn_dre->decl);
+    Expr* decl_expr = ctx.get_node(target_decl);
     assert(decl_expr != nullptr);
 
     const auto* decl_base = dyn_cast<Decl>(decl_expr);
     assert(decl_base != nullptr);
 
-    fn_decl = dyn_cast<FunctionDecl>(decl_expr);
+    fn_decl     = dyn_cast<FunctionDecl>(decl_expr);
+    resolved_fn = fn_decl != nullptr;
 
-    if (fn_decl == nullptr)
-        builtin_fn = dyn_cast<BuiltinFunction>(decl_expr);
+    if (!resolved_fn) {
+        builtin_fn  = dyn_cast<BuiltinFunction>(decl_expr);
+        resolved_fn = builtin_fn != nullptr;
+    }
 
-    if (fn_decl == nullptr)
-        opaq_fn = dyn_cast<OpaqueFunction>(decl_expr);
+    if (!resolved_fn) {
+        opaq_fn     = dyn_cast<OpaqueFunction>(decl_expr);
+        resolved_fn = opaq_fn != nullptr;
+    }
 
-    if (fn_decl == nullptr && opaq_fn == nullptr && builtin_fn == nullptr) {
+    if (!resolved_fn) {
+        struct_decl = dyn_cast<StructDecl>(decl_expr);
+        resolved_fn = struct_decl != nullptr;
+    }
+
+    if (!resolved_fn) {
         return fail(
             std::format("call to non-function symbol '{}'", ctx.get_sym(decl_base->identifier)),
             fn_call);
     }
 
+    assert(fn_decl != nullptr || opaq_fn != nullptr || builtin_fn != nullptr ||
+           struct_decl != nullptr);
+
     std::vector<TypeId> arg_types{};
     arg_types.reserve(fn_call.args.size());
 
-    for (NodeId arg : fn_call.args) {
+    for (NodeId& arg : fn_call.args) {
         if (arg.is_null())
             return internal_error("null node as argument to function call", fn_call);
 
@@ -1985,6 +2195,35 @@ TypeId JLSema::visit_FunctionCall(FunctionCall& fn_call) {
         }
 
         return ret_ty;
+    }
+
+    if (struct_decl != nullptr) {
+        if (struct_decl->field_decls.size() > arg_types.size())
+            return fail(std::format("not enough arguments in constructor call for struct '{}'",
+                                    ctx.get_sym(struct_decl->identifier)),
+                        fn_call);
+
+        if (struct_decl->field_decls.size() < arg_types.size())
+            return fail(std::format("too many arguments in constructor call for struct '{}'",
+                                    ctx.get_sym(struct_decl->identifier)),
+                        fn_call);
+
+        bool valid_call = true;
+        for (size_t i = 0; i < arg_types.size(); i++) {
+            const auto* field_decl = ctx.get_and_dyn_cast<FieldDecl>(struct_decl->field_decls[i]);
+            assert(field_decl != nullptr);
+
+            bool arg_valid = check(fn_call.args[i], field_decl->type, true);
+            valid_call     = valid_call && arg_valid;
+        }
+
+        if (!valid_call) {
+            return fail(std::format("invalid constructor argument types for {}",
+                                    type_str(struct_decl->type)),
+                        fn_call);
+        }
+
+        return struct_decl->type;
     }
 
     assert(opaq_fn != nullptr);

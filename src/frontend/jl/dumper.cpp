@@ -160,7 +160,8 @@ void JLDumper::visit_BuiltinFunction(BuiltinFunction& fn) {
 }
 
 void JLDumper::visit_StructDecl(StructDecl& struct_) {
-    out << indent() << "StructDecl: " << sym(struct_.identifier);
+    out << indent() << "StructDecl (" << sym(struct_.identifier) << ", "
+        << (struct_.is_mutable() ? "mutable" : "immutable") << "):\n";
 
     out << indent() << dump_label("fields");
     inc_indent();
@@ -255,12 +256,35 @@ void JLDumper::visit_SymbolLiteral(SymbolLiteral& lit) {
     out << indent() << "SymbolLiteral: :(" << sym(lit.value) << ")\n";
 }
 
-void JLDumper::visit_ModuleLookup(ModuleLookup& ml) {
-    out << indent() << "ModuleLookup:\n";
+void JLDumper::visit_FieldAccess(FieldAccess& acc) {
+    out << indent() << "FieldAccess:\n";
 
+    out << indent() << dump_label("target");
     inc_indent();
-    for (NodeId member_id : ml.chain)
+    visit(acc.target);
+    dec_indent();
+
+    out << indent() << dump_label("field");
+    inc_indent();
+    visit(acc.field_decl);
+    dec_indent();
+}
+
+void JLDumper::visit_DotChain(DotChain& dc) {
+    out << indent() << "DotChain:\n";
+
+    out << indent() << dump_label("chain");
+    inc_indent();
+    for (NodeId member_id : dc.chain)
         visit(member_id);
+    dec_indent();
+
+    out << indent() << dump_label("resolved");
+    inc_indent();
+    if (!dc.resolved_expr.is_null())
+        visit(dc.resolved_expr);
+    else
+        out << "-\n";
     dec_indent();
 }
 
@@ -303,11 +327,8 @@ void JLDumper::visit_DeclRefExpr(DeclRefExpr& dre) {
         }
     } else if (auto* sym_lit = dyn_cast<SymbolLiteral>(node)) {
         out << "unresolved, :(" << sym(sym_lit->value) << ")\n";
-    } else if (auto* mod_lookup = dyn_cast<ModuleLookup>(node)) {
-        out << "unresolved, " << mod_chain_to_path(mod_lookup->chain, ctx) << '\n';
     } else {
-        assert(false &&
-               "decl ref expr pointing to non-decl, non-symbol, non-module-lookup node type");
+        assert(false && "decl ref expr pointing to non-decl, non-symbol node type");
     }
 }
 

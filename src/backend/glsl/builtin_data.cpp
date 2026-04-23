@@ -156,13 +156,13 @@ namespace detail {
 using enum BuiltinType;
 
 #define X(name, ...) static constexpr BuiltinFnSig sigs_##name[] = {__VA_ARGS__};
-#include "backend/glsl/builtin_fn_sigs.def"
+#include "backend/glsl/builtin_defs/fn_sigs.def"
 #undef X
 
 // array of "compressed" fn signatures (e.g. GenF sin(GenF))
 constexpr BuiltinFn compressed_fn_data[] = {
 #define X(name, ...) {#name, detail::sigs_##name},
-#include "backend/glsl/builtin_fn_sigs.def"
+#include "backend/glsl/builtin_defs/fn_sigs.def"
 #undef X
 };
 

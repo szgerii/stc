@@ -109,6 +109,7 @@ void GLSLCodeGenVisitor::visit_ParamDecl(ParamDecl& param_decl) {
 void GLSLCodeGenVisitor::visit_StructDecl(StructDecl& struct_decl) {
     out << "struct " << ctx.get_sym(struct_decl.identifier) << "\n{\n";
 
+    indent_level++;
     for (NodeId field_decl : struct_decl.field_decls) {
         assert(ctx.isa<FieldDecl>(field_decl) &&
                "non-field-decl struct decl field not caught by sema");
@@ -116,12 +117,13 @@ void GLSLCodeGenVisitor::visit_StructDecl(StructDecl& struct_decl) {
         visit(field_decl);
         out << ';';
     }
+    indent_level--;
 
-    out << "};\n";
+    out << "\n};\n\n";
 }
 
 void GLSLCodeGenVisitor::visit_FieldDecl(FieldDecl& field_decl) {
-    out << type_str(field_decl.field_type, ctx.type_pool, ctx.sym_pool) << ' '
+    out << indent() << type_str(field_decl.field_type, ctx.type_pool, ctx.sym_pool) << ' '
         << ctx.get_sym(field_decl.identifier);
 }
 
@@ -134,11 +136,41 @@ void GLSLCodeGenVisitor::visit_BoolLiteral(BoolLiteral& bool_lit) {
 }
 
 void GLSLCodeGenVisitor::visit_IntLiteral(IntLiteral& int_lit) {
+    assert(!int_lit.type().is_null());
+    const auto& lit_td = ctx.type_pool.get_td(int_lit.type());
+    assert(lit_td.is<IntTD>());
+
     out << int_lit.value;
+
+    if (!lit_td.as<IntTD>().is_signed)
+        out << 'u';
 }
 
 void GLSLCodeGenVisitor::visit_FloatLiteral(FloatLiteral& float_lit) {
+    assert(!float_lit.type().is_null());
+    const auto& lit_td = ctx.type_pool.get_td(float_lit.type());
+    assert(lit_td.is<FloatTD>());
+
+    FloatTD float_td = lit_td.as<FloatTD>();
+
+    if (float_td.enc != FloatTD::Encoding::ieee754) {
+        error("The GLSL backend does not support non-IEEE754 floating point types");
+        return;
+    }
+
+    if (float_td.width != 32 && float_td.width != 64) {
+        error(std::format("The GLSL backend does not support floating point types with width {} "
+                          "(allowed: 32 or 64)",
+                          float_td.width));
+        return;
+    }
+
     out << float_lit.value;
+
+    if (float_td.width == 32)
+        out << 'f';
+    else
+        out << "lf";
 }
 
 void GLSLCodeGenVisitor::visit_VectorLiteral(VectorLiteral& vec_lit) {
@@ -214,6 +246,18 @@ void GLSLCodeGenVisitor::visit_SwizzleLiteral(SwizzleLiteral& swizzle_lit) {
         out << comp_map[swizzle_lit.comp3() & 0x03];
     if (count >= 4)
         out << comp_map[swizzle_lit.comp4() & 0x03];
+}
+
+void GLSLCodeGenVisitor::visit_FieldAccess(FieldAccess& acc) {
+    out << '(';
+    visit(acc.target);
+    out << ").";
+
+    const auto* fdecl = ctx.get_and_dyn_cast<FieldDecl>(acc.field_decl);
+    if (fdecl == nullptr)
+        return internal_error("invalid field accessor not caught by sema");
+
+    out << ctx.get_sym(fdecl->identifier);
 }
 
 void GLSLCodeGenVisitor::visit_StructInstantiation(StructInstantiation& s_inst) {

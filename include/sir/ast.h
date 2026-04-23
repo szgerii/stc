@@ -331,6 +331,16 @@ struct StructInstantiation : public Expr {
     SAME_NODE_KIND_DEF(NodeKind::StructInst)
 };
 
+struct FieldAccess : public Expr {
+    NodeId target;
+    NodeId field_decl;
+
+    explicit FieldAccess(SrcLocationId location, NodeId target, NodeId field_decl)
+        : Expr{location, NodeKind::FieldAccess}, target{target}, field_decl{field_decl} {}
+
+    SAME_NODE_KIND_DEF(NodeKind::FieldAccess)
+};
+
 struct ScopedExpr : public Expr {
     NodeId inner;
 
@@ -425,6 +435,9 @@ struct DeclRefExpr : public Expr {
 
     explicit DeclRefExpr(SrcLocationId location, NodeId decl)
         : Expr{location, NodeKind::DeclRef}, decl{decl} {}
+
+    explicit DeclRefExpr(SrcLocationId location, NodeId decl, TypeId type)
+        : Expr{location, NodeKind::DeclRef, type}, decl{decl} {}
 
     SAME_NODE_KIND_DEF(NodeKind::DeclRef)
 };

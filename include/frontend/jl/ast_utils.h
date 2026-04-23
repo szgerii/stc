@@ -7,7 +7,7 @@
 namespace stc::jl {
 
 inline std::string mod_chain_to_path(const std::vector<NodeId>& chain, const JLCtx& ctx,
-                                     size_t first_n = 0) {
+                                     const SymbolPool& sym_pool, size_t first_n = 0) {
     static constexpr size_t MOD_NAME_LENGTH_GUESS = 5U;
 
     if (first_n == 0 || first_n > chain.size())
@@ -19,16 +19,27 @@ inline std::string mod_chain_to_path(const std::vector<NodeId>& chain, const JLC
     for (size_t i = 0; i < first_n; i++) {
         const auto* sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(chain[i]);
 
-        if (sym_lit == nullptr)
-            throw std::logic_error{"non-symbol-literal node in module lookup chain"};
+        if (sym_lit == nullptr) {
+            if (const auto* dre = ctx.get_and_dyn_cast<DeclRefExpr>(chain[i]))
+                sym_lit = ctx.get_and_dyn_cast<SymbolLiteral>(dre->decl);
 
-        result += ctx.get_sym(sym_lit->value);
+            if (sym_lit == nullptr)
+                throw std::logic_error{"invalid node kind in module lookup chain"};
+        }
+
+        result += sym_pool.get_symbol(sym_lit->value);
 
         if (i + 1 != first_n)
             result += '.';
     }
 
     return result;
+}
+
+inline std::string mod_chain_to_path(const std::vector<NodeId>& chain, const JLCtx& ctx,
+                                     size_t first_n = 0) {
+
+    return mod_chain_to_path(chain, ctx, ctx.sym_pool, first_n);
 }
 
 enum class SwizzleSet : uint8_t { Invalid, XYZW, RGBA, STPQ };

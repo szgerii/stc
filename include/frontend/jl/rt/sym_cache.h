@@ -18,7 +18,7 @@ struct JuliaSymbolCache {
     jl_sym_t* continue_  = jl_symbol("continue");
     jl_sym_t* kw         = jl_symbol("kw");         // default initialized parameter
     jl_sym_t* parameters = jl_symbol("parameters"); // kwarg collection
-    jl_sym_t* double_col = jl_symbol("::");
+    jl_sym_t* dbl_col    = jl_symbol("::");
     jl_sym_t* nothing    = jl_symbol("nothing");
     jl_sym_t* while_     = jl_symbol("while");
     jl_sym_t* function   = jl_symbol("function");
@@ -32,6 +32,8 @@ struct JuliaSymbolCache {
     jl_sym_t* ref        = jl_symbol("ref");  // arr[i]
     jl_sym_t* dbl_amper  = jl_symbol("&&");
     jl_sym_t* dbl_pipe   = jl_symbol("||");
+    jl_sym_t* struct_    = jl_symbol("struct");
+    jl_sym_t* subtype_op = jl_symbol("<:");
 
     // types
     jl_sym_t* Bool    = jl_symbol("Bool");

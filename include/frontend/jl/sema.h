@@ -14,6 +14,8 @@ class JLSema : public JLVisitor<JLSema, JLCtx, TypeId> {
     std::vector<JLScope> scopes;
     TypeToJLVisitor type_to_jl;
 
+    NodeId main_fn_decl        = NodeId::null_id();
+    SymbolId sym_main          = SymbolId::null_id();
     TypeId expected_type       = TypeId::null_id();
     TypeId current_fn_ret      = TypeId::null_id();
     MethodDecl* current_method = nullptr;
@@ -29,6 +31,7 @@ public:
           tpool{ctx.type_pool},
           scopes{},
           type_to_jl{ctx},
+          sym_main{ctx.sym_pool.get_id("main")},
           in_interactive_ctx{in_interactive_ctx} {
 
         push_scope(ScopeKind::Global, global_scope_body);
