@@ -4,6 +4,7 @@
 #include "types/qualifier_pool.h"
 
 #include <algorithm>
+#include <array>
 
 namespace {
 
@@ -37,7 +38,7 @@ std::string_view bin_op_kind_str(BinOpKind op) {
         case BinOpKind::lt:   return "<";
         case BinOpKind::leq:  return "<=";
         case BinOpKind::gt:   return ">";
-        case BinOpKind::geq:  return ">";
+        case BinOpKind::geq:  return ">=";
         case BinOpKind::land: return "&&";
         case BinOpKind::lor:  return "||";
         case BinOpKind::lxor: return "^^";
@@ -280,7 +281,7 @@ void GLSLCodeGenVisitor::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
 }
 
 void GLSLCodeGenVisitor::visit_SwizzleLiteral(SwizzleLiteral& swizzle_lit) {
-    static constexpr char comp_map[4] = {'x', 'y', 'z', 'w'};
+    static constexpr std::array<char, 4> comp_map = {'x', 'y', 'z', 'w'};
 
     assert(0 < swizzle_lit.count() && swizzle_lit.count() <= 4 &&
            "invalid swizzle literal not caught before codegen");
@@ -330,7 +331,7 @@ void GLSLCodeGenVisitor::visit_StructInstantiation(StructInstantiation& s_inst) 
 
 void GLSLCodeGenVisitor::visit_ScopedExpr([[maybe_unused]] ScopedExpr& scoped_expr) {
     error("The GLSL backend does not support scoped expressions.");
-    successful_gen = false;
+    _success = false;
 }
 
 void GLSLCodeGenVisitor::visit_UnaryOp(UnaryOp& un_op) {

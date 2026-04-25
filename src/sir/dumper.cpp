@@ -187,9 +187,10 @@ void SIRDumper::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
 }
 
 void SIRDumper::visit_SwizzleLiteral(SwizzleLiteral& swizzle_lit) {
-    out << indent() << "SwizzleLiteral: [" << swizzle_lit.comp1() << ", " << swizzle_lit.comp2()
-        << ", " << swizzle_lit.comp3() << ", " << swizzle_lit.comp4()
-        << "] (count: " << swizzle_lit.count() << ")\n";
+    out << indent()
+        << std::format("SwizzleLiteral: [{}, {}, {}, {}] (count: {})\n", swizzle_lit.comp1(),
+                       swizzle_lit.comp2(), swizzle_lit.comp3(), swizzle_lit.comp4(),
+                       swizzle_lit.count());
 }
 
 void SIRDumper::visit_StructInstantiation(StructInstantiation& s_inst) {

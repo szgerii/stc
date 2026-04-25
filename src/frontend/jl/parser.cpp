@@ -14,7 +14,7 @@ STC_FORCE_INLINE jl_sym_t* is_sym(jl_value_t* value, jl_sym_t* checked_sym) {
     if (value == nullptr || !jl_is_symbol(value))
         return nullptr;
 
-    jl_sym_t* sym = stc::jl::safe_cast<jl_sym_t>(value);
+    auto* sym = stc::jl::safe_cast<jl_sym_t>(value);
     return sym == checked_sym ? sym : nullptr;
 }
 
@@ -22,16 +22,20 @@ STC_FORCE_INLINE jl_sym_t* is_sym(jl_value_t* value, std::string_view checked_sy
     if (value == nullptr || !jl_is_symbol(value))
         return nullptr;
 
-    jl_sym_t* sym = stc::jl::safe_cast<jl_sym_t>(value);
+    auto* sym = stc::jl::safe_cast<jl_sym_t>(value);
     return jl_symbol_name(sym) == checked_sym ? sym : nullptr;
 }
 
-STC_FORCE_INLINE jl_expr_t* is_expr(jl_value_t* value, jl_sym_t* head) {
+STC_FORCE_INLINE jl_expr_t* to_expr_if(jl_value_t* value, jl_sym_t* head) {
     if (value == nullptr || !jl_is_expr(value))
         return nullptr;
 
-    jl_expr_t* expr = stc::jl::safe_cast<jl_expr_t>(value);
+    auto* expr = stc::jl::safe_cast<jl_expr_t>(value);
     return expr->head == head ? expr : nullptr;
+}
+
+STC_FORCE_INLINE bool is_expr(jl_value_t* value, jl_sym_t* head) {
+    return to_expr_if(value, head) != nullptr;
 }
 
 } // namespace
@@ -61,7 +65,7 @@ TypeId JLParser::resolve_type(jl_value_t* type) {
         if (tsym == sym_cache.Nothing) return ctx.jl_Nothing_t();
         // clang-format on
 
-        static_assert((sizeof(void*) == 4U || sizeof(void*) == 8U) &&
+        static_assert((sizeof(void*) == 4U || sizeof(void*) == 8U),
                       "unsupported environment (sizeof(void*) is not 32 or 64 bits)");
 
         if (tsym == sym_cache.Int && ctx.config.coerce_to_i32)
@@ -95,9 +99,8 @@ TypeId JLParser::resolve_type(jl_value_t* type) {
         return TypeId::null_id();
     }
 
-    if (is_expr(type, sym_cache.curly)) {
-        jl_expr_t* type_expr = safe_cast<jl_expr_t>(type);
-        size_t type_nargs    = jl_expr_nargs(type_expr);
+    if (auto* type_expr = to_expr_if(type, sym_cache.curly)) {
+        size_t type_nargs = jl_expr_nargs(type_expr);
 
         if (type_nargs == 0) {
             internal_error("unexpected parametric type layout (zero arg)");
@@ -110,7 +113,7 @@ TypeId JLParser::resolve_type(jl_value_t* type) {
             return TypeId::null_id();
         }
 
-        jl_sym_t* type_base_sym = safe_cast<jl_sym_t>(type_base);
+        auto* type_base_sym = safe_cast<jl_sym_t>(type_base);
 
         if (type_base_sym == sym_cache.Vector) {
             if (type_nargs != 2) {
@@ -228,15 +231,15 @@ NodeId JLParser::parse(jl_value_t* node) {
 #undef HANDLE_LITERAL
 
     if (jl_is_int64(node)) {
-        constexpr int64_t i32_min = static_cast<int64_t>(std::numeric_limits<int32_t>::min());
-        constexpr int64_t i32_max = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+        constexpr auto i32_min = static_cast<int64_t>(std::numeric_limits<int32_t>::min());
+        constexpr auto i32_max = static_cast<int64_t>(std::numeric_limits<int32_t>::max());
 
         int64_t value = jl_unbox_int64(node);
 
         if (ctx.config.coerce_to_i32 && i32_min <= value && value <= i32_max)
             return emplace_node<Int32Literal>(cur_loc, static_cast<int32_t>(value));
-        else
-            return emplace_node<Int64Literal>(cur_loc, value);
+
+        return emplace_node<Int64Literal>(cur_loc, value);
     }
 
     // TODO: TEST ON SOME BE VM!!
@@ -297,7 +300,7 @@ NodeId JLParser::parse(jl_value_t* node) {
 NodeId JLParser::parse_code(std::string_view code) {
     jl_value_t* code_jl_str = nullptr;
     jl_value_t* parsed_expr = nullptr;
-    JL_GC_PUSH2(&code_jl_str, &parsed_expr);
+    JL_GC_PUSH2(&code_jl_str, &parsed_expr); // NOLINT
 
     const ScopeGuard jl_gc_pop_guard{[]() { JL_GC_POP(); }};
 
@@ -305,7 +308,7 @@ NodeId JLParser::parse_code(std::string_view code) {
     if (meta_mod_v == nullptr || !jl_is_module(meta_mod_v))
         throw std::logic_error{"Failed to look up Meta module inside Base"};
 
-    jl_module_t* meta_mod = reinterpret_cast<jl_module_t*>(meta_mod_v);
+    auto* meta_mod = reinterpret_cast<jl_module_t*>(meta_mod_v);
 
     jl_function_t* parse_fn = jl_get_global(meta_mod, jl_symbol("parse"));
     if (parse_fn == nullptr)
@@ -352,9 +355,7 @@ jl_value_t* JLParser::unwrap_layout_qual(jl_expr_t* lq_expr, std::vector<QualKin
         int32_t value          = 0;
         jl_sym_t* opt_name_sym = nullptr;
 
-        if (is_expr(lq_opt_v, sym_cache.eq)) {
-            jl_expr_t* lq_opt_expr = safe_cast<jl_expr_t>(lq_opt_v);
-
+        if (auto* lq_opt_expr = to_expr_if(lq_opt_v, sym_cache.eq)) {
             jl_value_t* opt_name_v = jl_exprarg(lq_opt_expr, 0);
             if (!jl_is_symbol(opt_name_v)) {
                 error("only symbols are allowed on the lhs of a layout option");
@@ -368,9 +369,9 @@ jl_value_t* JLParser::unwrap_layout_qual(jl_expr_t* lq_expr, std::vector<QualKin
                 value     = jl_unbox_int32(rhs_v);
                 has_value = true;
             } else if (jl_is_int64(rhs_v)) {
-                static constexpr int64_t i32_min =
+                static constexpr auto i32_min =
                     static_cast<int64_t>(std::numeric_limits<int32_t>::min());
-                static constexpr int64_t i32_max =
+                static constexpr auto i32_max =
                     static_cast<int64_t>(std::numeric_limits<int32_t>::max());
 
                 int64_t value_i64 = jl_unbox_int64(rhs_v);
@@ -424,8 +425,7 @@ NodeId JLParser::parse_qualified_decl(jl_value_t* qualified_expr, ParseCallback 
     LQPayload lq_payloads{};
 
     auto* expr_it_v = qualified_expr;
-    while (is_expr(expr_it_v, sym_cache.macrocall)) {
-        jl_expr_t* expr_it = safe_cast<jl_expr_t>(expr_it_v);
+    while (auto* expr_it = to_expr_if(expr_it_v, sym_cache.macrocall)) {
         assert(expr_it->head == sym_cache.macrocall);
 
         size_t nargs = jl_expr_nargs(expr_it);
@@ -445,7 +445,7 @@ NodeId JLParser::parse_qualified_decl(jl_value_t* qualified_expr, ParseCallback 
         if (!jl_is_symbol(arg1_v))
             return internal_error("unexpected macrocall layout (first arg is not a Symbol)");
 
-        jl_sym_t* arg1_sym = safe_cast<jl_sym_t>(arg1_v);
+        auto* arg1_sym = safe_cast<jl_sym_t>(arg1_v);
 
         // layout qualifiers are handled separately
         if (arg1_sym == sym_cache.layout) {
@@ -463,7 +463,7 @@ NodeId JLParser::parse_qualified_decl(jl_value_t* qualified_expr, ParseCallback 
             qual = try_parse_qual(qual_name);
 
             // no macro exists for these, simply discard
-            if (is_layout_qual(*qual))
+            if (qual.has_value() && is_layout_qual(*qual))
                 qual = std::nullopt;
         }
 
@@ -564,7 +564,7 @@ NodeId JLParser::parse_var_decl(jl_expr_t* expr, size_t nargs) {
 
     SrcLocationId decl_loc = cur_loc;
 
-    jl_value_t* inner    = reinterpret_cast<jl_value_t*>(expr);
+    auto* inner          = reinterpret_cast<jl_value_t*>(expr);
     jl_value_t* id       = nullptr;
     jl_value_t* type     = nullptr;
     jl_value_t* init     = nullptr;
@@ -580,7 +580,7 @@ NodeId JLParser::parse_var_decl(jl_expr_t* expr, size_t nargs) {
         inner = jl_exprarg(expr, 0);
     }
 
-    if (auto* assignment_expr = is_expr(inner, sym_cache.eq)) {
+    if (auto* assignment_expr = to_expr_if(inner, sym_cache.eq)) {
         if (jl_expr_nargs(assignment_expr) != 2)
             return internal_error("assignment expression with more/less than two args");
 
@@ -588,7 +588,7 @@ NodeId JLParser::parse_var_decl(jl_expr_t* expr, size_t nargs) {
         init  = jl_exprarg(assignment_expr, 1);
     }
 
-    if (auto* typed_expr = is_expr(inner, sym_cache.dbl_col)) {
+    if (auto* typed_expr = to_expr_if(inner, sym_cache.dbl_col)) {
         if (jl_expr_nargs(typed_expr) != 2)
             return internal_error("type annotation expression with more/less than two args");
 
@@ -624,7 +624,7 @@ NodeId JLParser::parse_method_decl(jl_expr_t* expr, size_t nargs) {
     jl_value_t* header_v = jl_exprarg(expr, 0);
     if (!jl_is_expr(header_v))
         return internal_error("unexpected function definition layout, couldn't unwrap header");
-    jl_expr_t* header = reinterpret_cast<jl_expr_t*>(header_v);
+    auto* header = reinterpret_cast<jl_expr_t*>(header_v);
 
     // function(x::T) where {T <: Int} ... end
     if (header->head == sym_cache.where)
@@ -664,7 +664,7 @@ NodeId JLParser::parse_method_decl(jl_expr_t* expr, size_t nargs) {
     jl_value_t* name_v = jl_exprarg(header, 0);
     if (!jl_is_symbol(name_v))
         return internal_error("unexpected non-symbol name in function header");
-    jl_sym_t* name = reinterpret_cast<jl_sym_t*>(name_v);
+    auto* name = reinterpret_cast<jl_sym_t*>(name_v);
 
     SymbolId fn_name = ctx.sym_pool.get_id(jl_symbol_name(name));
 
@@ -708,7 +708,7 @@ NodeId JLParser::parse_param_decl(jl_value_t* param) {
         return create_param(safe_cast<jl_sym_t>(param));
 
     if (jl_is_expr(param)) {
-        jl_expr_t* param_expr = safe_cast<jl_expr_t>(param);
+        auto* param_expr = safe_cast<jl_expr_t>(param);
 
         TypeId type = TypeId::null_id();
         NodeId init = NodeId::null_id();
@@ -914,7 +914,7 @@ NodeId JLParser::parse_dot_chain(jl_expr_t* expr, size_t nargs) {
             continue;
         }
 
-        jl_expr_t* lhs_expr = safe_cast<jl_expr_t>(current_lhs);
+        auto* lhs_expr = safe_cast<jl_expr_t>(current_lhs);
         assert(lhs_expr->head == sym_cache.dot);
 
         if (jl_expr_nargs(lhs_expr) != 2)
@@ -1015,14 +1015,14 @@ NodeId JLParser::parse_struct(jl_expr_t* expr, size_t nargs) {
     if (!jl_is_bool(is_mutable_arg))
         return internal_error("unexpected struct definition layout (first arg is non-bool)");
 
-    bool is_mutable = jl_unbox_bool(is_mutable_arg);
+    bool is_mutable = static_cast<bool>(jl_unbox_bool(is_mutable_arg));
 
     if (!jl_is_symbol(struct_id_arg)) {
         if (!jl_is_expr(struct_id_arg))
             return internal_error(
                 "unexpected struct definition layout (second arg is non-symbol, non-expr)");
 
-        jl_expr_t* struct_id_expr = safe_cast<jl_expr_t>(struct_id_arg);
+        auto* struct_id_expr = safe_cast<jl_expr_t>(struct_id_arg);
         assert(struct_id_expr != nullptr);
 
         if (struct_id_expr->head == sym_cache.curly)
@@ -1044,7 +1044,7 @@ NodeId JLParser::parse_struct(jl_expr_t* expr, size_t nargs) {
     if (!jl_is_expr(field_decls_arg))
         return internal_error("unexpected struct definition layout (third arg is non-expr)");
 
-    jl_expr_t* field_decls_block = safe_cast<jl_expr_t>(field_decls_arg);
+    auto* field_decls_block = safe_cast<jl_expr_t>(field_decls_arg);
     if (field_decls_block == nullptr || field_decls_block->head != sym_cache.block)
         return internal_error(
             "unexpected struct definition layout (third arg is a non-block expr)");
@@ -1073,7 +1073,7 @@ NodeId JLParser::parse_struct(jl_expr_t* expr, size_t nargs) {
 
         NodeId parsed_decl = parse_qualified_decl(field_decl_v, &JLParser::parse_field_decl);
 
-        FieldDecl* fdecl = ctx.get_and_dyn_cast<FieldDecl>(parsed_decl);
+        auto* fdecl = ctx.get_and_dyn_cast<FieldDecl>(parsed_decl);
         if (parsed_decl.is_null())
             continue;
 

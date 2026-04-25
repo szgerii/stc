@@ -19,6 +19,10 @@ static_assert(false, "max macro defined pre julia.h include");
 static_assert(false, "min macro defined pre julia.h include");
 #endif
 
+// string needs to be included before julia to fix some very specific issues under some very
+// specific configurations
+#include <string>
+
 #include <julia.h>
 
 // undef NOMINMAX so that if anything else tries to define min/max, it'll be noticed and handled

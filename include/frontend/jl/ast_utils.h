@@ -44,6 +44,8 @@ inline std::string mod_chain_to_path(const std::vector<NodeId>& chain, const JLC
 
 enum class SwizzleSet : uint8_t { Invalid, XYZW, RGBA, STPQ };
 
+inline constexpr uint8_t INVALID_SWIZZLE = 0xFF;
+
 [[nodiscard]] STC_FORCE_INLINE std::pair<uint8_t, SwizzleSet> parse_swizzle_component(char c) {
     // clang-format off
     switch (c) {
@@ -64,7 +66,7 @@ enum class SwizzleSet : uint8_t { Invalid, XYZW, RGBA, STPQ };
 
         [[unlikely]]
         default:
-            return {0xFF, SwizzleSet::Invalid};
+            return {INVALID_SWIZZLE, SwizzleSet::Invalid};
     }
     // clang-format on
 }

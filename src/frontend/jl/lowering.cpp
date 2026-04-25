@@ -3,6 +3,8 @@
 #include "sir/ast.h"
 #include "types/type_to_string.h"
 
+#include <array>
+
 namespace {
 
 using SIRNodeId = stc::sir::NodeId;
@@ -25,20 +27,20 @@ bool JLLoweringVisitor::pre_visit_ptr(Expr* expr) {
 
 SIRNodeId JLLoweringVisitor::visit_default_case() {
     internal_error("nullptr found in the Julia AST during lowering to SIR");
-    this->success = false;
+    this->_success = false;
 
     return SIRNodeId::null_id();
 }
 
 SIRNodeId JLLoweringVisitor::fail(std::string_view msg) {
     stc::error(msg);
-    success = false;
+    _success = false;
     return SIRNodeId::null_id();
 }
 
 SIRNodeId JLLoweringVisitor::internal_error(std::string_view msg) {
     stc::internal_error(msg);
-    success = false;
+    _success = false;
     return SIRNodeId::null_id();
 }
 
@@ -46,7 +48,7 @@ SIRNodeId JLLoweringVisitor::visit_and_check(NodeId id) {
     SIRNodeId result = visit(id);
 
     if (result.is_null()) {
-        if (success)
+        if (_success)
             internal_error("null_id returned by a node in the Julia -> SIR lowering visitor.");
 
         return SIRNodeId::null_id();
@@ -73,10 +75,11 @@ SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
     NodeId explicit_main       = NodeId::null_id(); // TODO: error on redecl
     size_t struct_count        = 0;
     for (size_t i = 0; i < body.size();) {
-        NodeId expr = body[i];
+        NodeId expr    = body[i];
+        auto ptrdiff_i = static_cast<ptrdiff_t>(i);
 
         if (ctx.isa<MethodDecl>(expr)) {
-            body.erase(body.begin() + i);
+            body.erase(body.begin() + ptrdiff_i);
 
             if (sir_ctx.get_sym(ctx.get_and_dyn_cast<MethodDecl>(expr)->identifier) != "main")
                 prepended_exprs.emplace_back(expr);
@@ -87,8 +90,9 @@ SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
         }
 
         if (ctx.isa<StructDecl>(expr)) {
-            prepended_exprs.insert(prepended_exprs.begin() + struct_count, expr);
-            body.erase(body.begin() + i);
+            prepended_exprs.insert(prepended_exprs.begin() + static_cast<ptrdiff_t>(struct_count),
+                                   expr);
+            body.erase(body.begin() + ptrdiff_i);
             struct_count++;
 
             continue;
@@ -106,7 +110,7 @@ SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
                 prepended_exprs.emplace_back(expr);
 
                 if (vdecl->initializer.is_null() || !encountered_real_body) {
-                    body.erase(body.begin() + i);
+                    body.erase(body.begin() + ptrdiff_i);
                     continue;
                 }
 
@@ -123,7 +127,7 @@ SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
         }
 
         auto* assign = ctx.get_and_dyn_cast<Assignment>(expr);
-        if (assign && assign->is_implicit_decl()) {
+        if (assign != nullptr && assign->is_implicit_decl()) {
             const auto* dre = ctx.get_and_dyn_cast<DeclRefExpr>(assign->target);
             assert(dre != nullptr);
 
@@ -154,7 +158,8 @@ SIRNodeId JLLoweringVisitor::lower(NodeId global_cmpd_id) {
 
         if (body_first_idx < body.size()) {
             main_body.reserve(body.size() - body_first_idx);
-            main_body.insert(main_body.end(), body.begin() + body_first_idx, body.end());
+            main_body.insert(main_body.end(), body.begin() + static_cast<ptrdiff_t>(body_first_idx),
+                             body.end());
         }
 
         body.resize(body_first_idx); // leave one for the main method's decl
@@ -335,7 +340,7 @@ SIRNodeId JLLoweringVisitor::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
     for (NodeId member : arr_lit.members) {
         SIRNodeId lowered_member = visit(member);
         if (lowered_member.is_null()) {
-            if (success)
+            if (_success)
                 return fail("failed to lower member node in ArrayLiteral");
 
             return SIRNodeId::null_id();
@@ -469,11 +474,11 @@ SIRNodeId JLLoweringVisitor::visit_IndexerExpr(IndexerExpr& idx_expr) {
                 if (swizzle_n == 0 || swizzle_n > 4)
                     return internal_error("invalid swizzle component count not caught by sema");
 
-                uint8_t comps[4] = {0, 0, 0, 0};
+                std::array<uint8_t, 4> comps = {0, 0, 0, 0};
                 for (size_t i = 0; i < swizzle_n; i++) {
                     comps[i] = parse_swizzle_component(swizzle[i]).first;
 
-                    if (comps[i] == 0xFF)
+                    if (comps[i] == INVALID_SWIZZLE)
                         return internal_error("invalid swizzle component not caught by sema");
                 }
 
@@ -565,7 +570,7 @@ SIRNodeId JLLoweringVisitor::visit_FunctionCall(FunctionCall& fn_call) {
                         "Base or JuliaGLM");
     }
 
-    auto decl_expr = ctx.get_node(dre != nullptr ? dre->decl : dc->resolved_expr);
+    auto* decl_expr = ctx.get_node(dre != nullptr ? dre->decl : dc->resolved_expr);
 
     auto fn_identifier = SymbolId::null_id();
     bool is_ctor       = false;

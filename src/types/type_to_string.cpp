@@ -28,6 +28,7 @@ std::string enc_to_str(FPEnc enc) {
 
 namespace stc::types {
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 std::string TypeToStringVisitor::visit_null_id() {
     return "null type";
 }
@@ -41,11 +42,13 @@ std::string TypeToStringVisitor::dispatch(const TypeDescriptor& td) {
     return TypeVisitor::dispatch(td);
 }
 
-std::string TypeToStringVisitor::visit(VoidTD) {
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+std::string TypeToStringVisitor::visit([[maybe_unused]] VoidTD void_td) {
     return "void";
 }
 
-std::string TypeToStringVisitor::visit(BoolTD) {
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+std::string TypeToStringVisitor::visit([[maybe_unused]] BoolTD bool_td) {
     return "bool";
 }
 

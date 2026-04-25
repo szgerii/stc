@@ -88,8 +88,8 @@ template <size_t FnCount, size_t SigCount>
 struct UnrolledData {
     struct FnDesc {
         std::string_view name;
-        size_t sig_offset;
-        size_t sig_count;
+        size_t sig_offset = 0;
+        size_t sig_count  = 0;
     };
 
     std::array<BuiltinFnSig, SigCount> sigs;
@@ -160,11 +160,11 @@ using enum BuiltinType;
 #undef X
 
 // array of "compressed" fn signatures (e.g. GenF sin(GenF))
-constexpr BuiltinFn compressed_fn_data[] = {
-#define X(name, ...) {#name, detail::sigs_##name},
+constexpr auto compressed_fn_data = std::to_array<BuiltinFn>({
+#define X(name, ...) BuiltinFn{#name, detail::sigs_##name},
 #include "backend/glsl/builtin_defs/fn_sigs.def"
 #undef X
-};
+});
 
 constexpr size_t builtin_fn_count   = std::size(compressed_fn_data);
 constexpr size_t unrolled_sig_count = count_unrolled_sigs(compressed_fn_data);

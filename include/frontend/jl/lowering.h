@@ -21,8 +21,8 @@ class JLLoweringVisitor final : public JLVisitor<JLLoweringVisitor, JLCtx, sir::
     using SIRNodeId = sir::NodeId;
 
     std::unordered_map<Decl*, SIRNodeId> decl_map{};
-    bool success   = true;
     bool in_method = false;
+    bool _success  = true;
 
 public:
     explicit JLLoweringVisitor(JLCtx&& ctx)
@@ -59,7 +59,7 @@ public:
 
     SIRNodeId lower(NodeId global_cmpd_id);
 
-    bool successful() const { return success; }
+    bool success() const { return _success; }
     sir::SIRCtx sir_ctx;
 
 private:

@@ -3,7 +3,6 @@
 #include "frontend/jl/ast_utils.h"
 #include "frontend/jl/dumper.h"
 #include "frontend/jl/rt/utils.h"
-#include "frontend/jl/sema.h"
 #include "julia_guard.h"
 #include "types/type_to_string.h"
 
@@ -122,7 +121,7 @@ jl_datatype_t* JLSema::to_jl_type(TypeId type) {
 }
 
 NodeId JLSema::try_unwrap_cmpd(NodeId cmpd_id) {
-    auto cmpd = ctx.get_and_dyn_cast<CompoundExpr>(cmpd_id);
+    auto* cmpd = ctx.get_and_dyn_cast<CompoundExpr>(cmpd_id);
 
     if (cmpd == nullptr)
         return cmpd_id;
@@ -219,8 +218,8 @@ bool JLSema::mangle_scope(JLScope& scope) {
                 continue;
         }
 
-        FunctionDecl* fn_decl = dyn_cast<FunctionDecl>(decl);
-        VarDecl* var_decl     = dyn_cast<VarDecl>(decl);
+        auto* fn_decl  = dyn_cast<FunctionDecl>(decl);
+        auto* var_decl = dyn_cast<VarDecl>(decl);
 
         bool rewrite = (var_decl != nullptr && !var_decl->is_builtin()) || isa<ParamDecl>(decl) ||
                        (fn_decl != nullptr && ctx.get_sym(fn_decl->identifier) != "main");
@@ -271,6 +270,8 @@ void JLSema::pop_scope(bool is_global, bool skip_mangle) {
     // dmq to grow, potentially creating dangling references/invalidated iterators
 
     size_t scope_idx = scopes.size() - 1;
+
+    // NOLINTNEXTLINE(modernize-loop-convert)
     for (size_t i = 0; i < scopes[scope_idx].deferred_method_queue.size(); i++) {
         NodeId m_id = scopes[scope_idx].deferred_method_queue[i];
         auto* mdecl = ctx.get_and_dyn_cast<MethodDecl>(m_id);
@@ -459,7 +460,7 @@ JLSema::TypeCheckResult JLSema::check(Expr& expr, TypeId checked_type, bool allo
     if (result == TypeCheckResult::Failure) {
         // if actual_type is null, that's mostly an already reported error
         if (_success || !actual_type.is_null()) {
-            std::string reason{""};
+            std::string reason{};
 
             if (ctx.config.print_conv_fail_reason) {
                 bool jl_allows = is_jl_convertible(actual_type, checked_type, tpool);
@@ -594,7 +595,8 @@ TypeId JLSema::visit_VarDecl(VarDecl& vdecl) {
                                           "a variable declaration's symbol: '{}'",
                                           ctx.get_sym(vdecl.identifier)),
                               vdecl);
-    else if (*expected_bt == BindingType::Captured)
+
+    if (*expected_bt == BindingType::Captured)
         return internal_error("wrongfully inferred binding type of Captured for a symbol that is "
                               "explicitly declared in scope",
                               vdecl);
@@ -934,11 +936,10 @@ TypeId JLSema::visit_MethodDecl(MethodDecl& method) {
                         "function declaration already present in symbol table at the "
                         "time of the first method declaration's resolution",
                         method);
-                else
-                    return fail(
-                        std::format("redeclaration of already declared symbol '{}' as a method",
-                                    ctx.get_sym(method.identifier)),
-                        method);
+
+                return fail(std::format("redeclaration of already declared symbol '{}' as a method",
+                                        ctx.get_sym(method.identifier)),
+                            method);
             }
 
             // methods could each insert their own id during their visitor run, but we already have
@@ -1378,7 +1379,7 @@ TypeId JLSema::visit_ArrayLiteral(ArrayLiteral& arr_lit) {
                     arr_lit);
     }
 
-    uint32_t len = static_cast<uint32_t>(arr_lit.members.size());
+    auto len = static_cast<uint32_t>(arr_lit.members.size());
 
     TypeId checked_el_type = TypeId::null_id();
     if (is_checking()) {
@@ -1501,7 +1502,7 @@ TypeId JLSema::visit_IndexerExpr(IndexerExpr& idx_expr) {
             for (size_t i = 0; i < swizzle_n; i++) {
                 auto [comp, cur_set] = parse_swizzle_component(swizzle[i]);
 
-                if (comp == 0xFF)
+                if (comp == INVALID_SWIZZLE)
                     return fail(
                         std::format("invalid swizzle expression component '{}'", swizzle[i]),
                         idx_expr);
@@ -1596,12 +1597,12 @@ TypeId JLSema::visit_FieldAccess(FieldAccess& acc) {
     if (target_sym_lit == nullptr)
         return internal_error("unexpected node kind in rhs of a FieldAccess expression", acc);
 
-    for (size_t i = 0; i < sdecl->field_decls.size(); i++) {
-        const auto* fdecl = ctx.get_and_dyn_cast<FieldDecl>(sdecl->field_decls[i]);
+    for (NodeId fdecl_id : sdecl->field_decls) {
+        const auto* fdecl = ctx.get_and_dyn_cast<FieldDecl>(fdecl_id);
         assert(fdecl != nullptr);
 
         if (fdecl->identifier == target_sym_lit->value) {
-            acc.field_decl       = sdecl->field_decls[i];
+            acc.field_decl       = fdecl_id;
             acc.target_type_decl = sdecl_id;
 
             return fdecl->type;
@@ -1804,7 +1805,7 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
         dre.decl = ctx.emplace_node<OpaqueFunction>(dre.location, fn_name, jl_fn).first;
         infer(dre.decl);
 
-        if (!jl_is_type(jl_fn) && ctx.config.warn_on_jl_sema_query)
+        if (!rt::is_type(jl_fn) && ctx.config.warn_on_jl_sema_query)
             warn(std::format("had to resolve function reference through julia for non-type "
                              "referring symbol '{}'",
                              sym_str),
@@ -1942,7 +1943,7 @@ TypeId JLSema::ret_type_of_jl_call(jl_function_t* fn, const std::vector<TypeId>&
 
     jl_value_t* type_tuple  = nullptr;
     jl_value_t* res_jl_type = nullptr;
-    JL_GC_PUSH2(&type_tuple, &res_jl_type);
+    JL_GC_PUSH2(&type_tuple, &res_jl_type); // NOLINT
 
     const ScopeGuard jl_gc_pop_guard{[&]() { JL_GC_POP(); }};
 
@@ -1974,12 +1975,12 @@ TypeId JLSema::ret_type_of_jl_call(jl_function_t* fn, const std::vector<TypeId>&
                     base_expr);
     }
 
-    if (res_jl_type == reinterpret_cast<jl_value_t*>(jl_bottom_type)) { // Union{}
+    if (res_jl_type == jl_bottom_type) { // Union{}
         // either function is not callable with given signature, or function body never returns
         // normally (e.g. throw, infinite loop, etc. on every branch)
 
-        // it's not worth it to check hasmethod earlier, since for non-bottom returning cases, it's
-        // implied to be true (and so the happy path performs one less julia call)
+        // it's not worth it to check hasmethod earlier, since for non-bottom returning cases,
+        // it's implied to be true (and so the happy path performs one less julia call)
 
         jl_function_t* has_method_fn = ctx.jl_env.module_cache.base_mod.get_fn("hasmethod");
         jl_value_t* has_method_val   = jl_call2(has_method_fn, fn, type_tuple);
@@ -2008,7 +2009,7 @@ TypeId JLSema::ret_type_of_jl_call(jl_function_t* fn, const std::vector<TypeId>&
                     base_expr);
     }
 
-    if (!jl_is_datatype(res_jl_type) || !jl_is_concrete_type(res_jl_type)) {
+    if (!jl_is_datatype(res_jl_type) || !rt::is_concrete_type(res_jl_type)) {
         std::cerr << "Inferred signature: ";
         jl_static_show(jl_stderr_stream(), type_tuple);
         std::cerr << "\nInferred return type: ";
@@ -2085,16 +2086,18 @@ std::optional<MethodDecl*> JLSema::find_sig_match(const FunctionDecl& fn_decl,
                                      "allowed (call to '{}')",
                                      ctx.get_sym(mdecl->identifier)),
                          base_expr);
-                    return std::nullopt;
-                } else {
-                    fail(std::format(
-                             "call to method '{}' with implicit return type, which has not been "
-                             "inferred yet (this is most likely the result of mutually recursive "
-                             "methods with implicit return types, which is not allowed)",
-                             ctx.get_sym(mdecl->identifier)),
-                         base_expr);
+
                     return std::nullopt;
                 }
+
+                fail(std::format(
+                         "call to method '{}' with implicit return type, which has not been "
+                         "inferred yet (this is most likely the result of mutually recursive "
+                         "methods with implicit return types, which is not allowed)",
+                         ctx.get_sym(mdecl->identifier)),
+                     base_expr);
+
+                return std::nullopt;
             }
 
             target_method = mdecl;
@@ -2389,15 +2392,15 @@ TypeId JLSema::visit_ReturnStmt(ReturnStmt& ret) {
                         ret);
     }
 
-    return TypePool::void_td();
+    return tpool.void_td();
 }
 
 TypeId JLSema::visit_ContinueStmt([[maybe_unused]] ContinueStmt& cont) {
-    return TypePool::void_td();
+    return tpool.void_td();
 }
 
 TypeId JLSema::visit_BreakStmt([[maybe_unused]] BreakStmt& brk) {
-    return TypePool::void_td();
+    return tpool.void_td();
 }
 
 } // namespace stc::jl

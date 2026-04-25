@@ -184,7 +184,7 @@ struct VarDecl : public Decl {
         if (value)
             _node_storage |= (1U << 7);
         else
-            _node_storage &= ~(1U << 7);
+            _node_storage &= static_cast<uint8_t>(~(1U << 7));
     }
 
     SAME_NODE_KIND_DEF(NodeKind::VarDecl)

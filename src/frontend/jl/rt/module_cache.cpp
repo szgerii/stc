@@ -14,8 +14,8 @@ jl_function_t* JuliaModule::get_fn(std::string_view fn_name, bool throw_on_not_f
         if (throw_on_not_found)
             throw std::logic_error{
                 std::format("couldn't find function with name {} in module", fn_name)};
-        else
-            return nullptr;
+
+        return nullptr;
     }
 
     auto [fn_cache_it, inserted] = fn_cache.emplace(std::move(fn_str), fn);
@@ -34,8 +34,8 @@ JuliaModuleCache::MaybeModRef JuliaModuleCache::get_mod(std::string_view mod_pat
         // libjulia needs a null-terminated string
         std::string mod_name{mod_path.substr(first, len)};
 
-        jl_value_t* mod_v     = jl_get_global(current_mod, jl_symbol(mod_name.c_str()));
-        jl_module_t* next_mod = try_cast<jl_module_t>(mod_v);
+        jl_value_t* mod_v = jl_get_global(current_mod, jl_symbol(mod_name.c_str()));
+        auto* next_mod    = try_cast<jl_module_t>(mod_v);
 
         return next_mod;
     };
@@ -43,7 +43,7 @@ JuliaModuleCache::MaybeModRef JuliaModuleCache::get_mod(std::string_view mod_pat
     size_t first_pos    = 0U;
     size_t dot_pos      = mod_path.find('.', first_pos);
     jl_module_t* mod_it = root_mod;
-    while (dot_pos != mod_path.npos) {
+    while (dot_pos != std::string_view::npos) {
         if (first_pos == dot_pos)
             return std::nullopt;
 

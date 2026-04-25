@@ -4,7 +4,7 @@
 
 namespace stc {
 
-// None -> nothing is dumped when an error is encountered
+// None    -> nothing is dumped when an error is encountered
 // Partial -> the affected subtree of the AST is dumped when an error is encountered
 // Verbose -> the entire AST is dumped when an error is encountered
 enum class DumpVerbosity : uint8_t { None = 0, Partial, Verbose };
@@ -21,6 +21,8 @@ struct TranspilerConfig {
     bool print_conv_fail_reason      = false;
     bool coerce_to_f32               = true;
     bool coerce_to_i32               = true;
+
+    std::string target_version = "460";
 };
 
 } // namespace stc

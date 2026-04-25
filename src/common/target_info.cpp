@@ -29,7 +29,7 @@ bool TargetInfo::has_builtin_fn(std::string_view fn_name) const {
 }
 
 TypeId TargetInfo::builtin_fn_ret_ty(std::string_view fn_name, const TypeList& arg_types) const {
-    auto fn = get_builtin_fn(fn_name);
+    const auto* fn = get_builtin_fn(fn_name);
 
     if (fn == nullptr)
         return TypeId::null_id();
@@ -47,7 +47,7 @@ TargetInfo::builtin_fn_ret_ty_with_impl_cast(std::string_view fn_name,
                                              const TypeList& arg_types) const {
     static TypeList empty_list{};
 
-    auto fn = get_builtin_fn(fn_name);
+    const auto* fn = get_builtin_fn(fn_name);
 
     if (fn == nullptr)
         return {TypeId::null_id(), empty_list};

@@ -1,5 +1,31 @@
 cmake_minimum_required(VERSION 3.24)
-project(ShaderTranspilerCore)
+
+# Version info
+
+project(ShaderTranspilerCore VERSION 0.1.0)
+set(STC_VERSION_SUFFIX "")
+set(STC_SOVERSION "0") # for lib ABI-compatibility
+
+set(STC_VERSION "${PROJECT_VERSION}${STC_VERSION_SUFFIX}")
+
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE STC_GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+else()
+    set(STC_GIT_HASH "unknown")
+endif()
+
+set(STC_FULL_VERSION "${STC_VERSION}+${STC_GIT_HASH}")
+
+message(STATUS "Build version is ${STC_FULL_VERSION}")
+
+# Config
+
 option(FETCH_CATCH2 "Force fetching Catch2 from the github repo, even if it's installed locally" OFF)
 option(NO_CCACHE "Disable compiler caching through ccache, even if it's installed locally" OFF)
 option(NO_TIDY "Disable static analysis through clang-tidy, even if it's installed locally" OFF)
@@ -11,6 +37,8 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
 endif()
 
 message(STATUS "Build type is ${CMAKE_BUILD_TYPE}")
+
+# Julia lookup
 
 # make sure julia executable is available
 find_program(JULIA_EXEC julia)
@@ -28,6 +56,12 @@ execute_process(
 execute_process(
     COMMAND ${JULIA_EXEC} -e "using Libdl; print(Libdl.dlpath(\"libjulia\"))"
     OUTPUT_VARIABLE JULIA_LIB
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+execute_process(
+    COMMAND ${JULIA_EXEC} -e "print(VERSION)"
+    OUTPUT_VARIABLE STC_JULIA_VERSION
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
@@ -58,6 +92,8 @@ endif()
 message(STATUS "Found Julia include dir: ${JULIA_INCLUDE_DIR}")
 message(STATUS "Found Julia library: ${JULIA_LIB}")
 
+# C++ building begins here
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -66,8 +102,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 set(LIB_OUTPUT_DIR ${CMAKE_BINARY_DIR}/lib)
+set(BIN_OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin)
+set(TEST_OUTPUT_DIR ${CMAKE_BINARY_DIR}/test)
 
-file(GLOB_RECURSE ALL_SOURCES CONFIGURE_DEPENDS "src/*.cpp" "include/*.h" "sandbox/*.cpp" "sandbox/*.h" "test/*.cpp" "test/*.h")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/meta/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/meta/version.h"
+)
+
+file(GLOB_RECURSE ALL_SOURCES CONFIGURE_DEPENDS "include/*.h" "src/*.cpp" "cli/*.h" "cli/*.cpp" "sandbox/*.cpp" "sandbox/*.h" "test/*.cpp" "test/*.h")
+
+set(LIB_SOURCES ${ALL_SOURCES})
+list(FILTER LIB_SOURCES EXCLUDE REGEX "sandbox/.*")
+list(FILTER LIB_SOURCES EXCLUDE REGEX "test/.*")
+list(FILTER LIB_SOURCES EXCLUDE REGEX "cli/.*")
 
 # ccache
 
@@ -158,7 +206,7 @@ else()
     )
 
     if (MINGW)
-        target_link_options(CommonConfig INTERFACE -static-libgcc -static-libstdc++ -Wl,--allow-multiple-definition)
+        target_link_options(CommonConfig INTERFACE -static-libgcc -static-libstdc++ -static -lpthread -Wl,--allow-multiple-definition)
     endif()
 endif()
 
@@ -188,9 +236,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT NO_SAN)
     endif()
 endif()
 
-set(LIB_SOURCES ${ALL_SOURCES})
-list(FILTER LIB_SOURCES EXCLUDE REGEX "sandbox/.*")
-list(FILTER LIB_SOURCES EXCLUDE REGEX "test/.*")
+# libstc
 
 file(GLOB_RECURSE LIB_HEADERS CONFIGURE_DEPENDS "include/*.h")
 
@@ -199,7 +245,7 @@ set(LIB_TARGET stc)
 add_library(${LIB_TARGET} SHARED ${LIB_SOURCES})
 
 target_include_directories(${LIB_TARGET} PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_include_directories(${LIB_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(${LIB_TARGET} PUBLIC  ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_include_directories(${LIB_TARGET} SYSTEM PRIVATE ${JULIA_INCLUDE_DIR})
 
 target_link_libraries(${LIB_TARGET} PRIVATE CommonConfig)
@@ -214,6 +260,9 @@ target_sources(${LIB_TARGET} PUBLIC
 )
 
 set_target_properties(${LIB_TARGET} PROPERTIES
+    VERSION                                 ${PROJECT_VERSION}
+    SOVERSION                               ${STC_SOVERSION}
+
     LIBRARY_OUTPUT_DIRECTORY                ${LIB_OUTPUT_DIR}
     ARCHIVE_OUTPUT_DIRECTORY                ${LIB_OUTPUT_DIR}
 
@@ -234,7 +283,40 @@ if (DEFINED CLANG_TIDY_CMD AND NOT NO_TIDY)
     set_target_properties(${LIB_TARGET} PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_CMD}")
 endif()
 
-# Catch2
+# CLI
+
+set(CLI_TARGET stc_cli)
+
+add_executable(${CLI_TARGET} "cli/cli.cpp")
+
+set_target_properties(${CLI_TARGET} PROPERTIES OUTPUT_NAME "stc")
+
+set_target_properties(${CLI_TARGET} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG          ${BIN_OUTPUT_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE        ${BIN_OUTPUT_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${BIN_OUTPUT_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL     ${BIN_OUTPUT_DIR}
+)
+
+target_link_libraries(${CLI_TARGET} PRIVATE ${LIB_TARGET} CommonConfig ${JULIA_LIB})
+
+target_include_directories(${CLI_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(${CLI_TARGET} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+target_include_directories(${CLI_TARGET} SYSTEM PRIVATE ${JULIA_INCLUDE_DIR})
+
+if (DEFINED CLANG_TIDY_CMD AND NOT NO_TIDY)
+    set_target_properties(${CLI_TARGET} PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_CMD}")
+endif()
+
+if (WIN32)
+    add_custom_command(TARGET ${CLI_TARGET} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:${LIB_TARGET}>
+        $<TARGET_FILE_DIR:${CLI_TARGET}>
+    )
+endif()
+
+# Catch2 / testing
 
 if (BUILD_TESTING)
     if (NOT FETCH_CATCH2)
@@ -266,16 +348,26 @@ if (BUILD_TESTING)
     endif()
 
     add_executable(unit_tests "test/test.cpp")
+
+    set_target_properties(unit_tests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG          ${TEST_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE        ${TEST_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${TEST_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL     ${TEST_OUTPUT_DIR}
+    )
+
     target_link_libraries(unit_tests PRIVATE ${LIB_TARGET} Catch2::Catch2WithMain CommonConfig)
     target_include_directories(unit_tests PRIVATE include)
     target_include_directories(unit_tests SYSTEM PRIVATE ${JULIA_INCLUDE_DIR})
 
     # copy lib for test runner
-    add_custom_command(TARGET unit_tests POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:${LIB_TARGET}>
-        $<TARGET_FILE_DIR:unit_tests>
-    )
+    if (WIN32)
+        add_custom_command(TARGET unit_tests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:${LIB_TARGET}>
+            $<TARGET_FILE_DIR:unit_tests>
+        )
+    endif()
 
     # CTest
     include(CTest)
@@ -369,11 +461,18 @@ foreach (SBOX_FILE ${SANDBOX_SOURCES})
 
     add_executable(${FNAME} ${SBOX_FILE})
 
+    set_target_properties(${FNAME} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG          ${BIN_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE        ${BIN_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${BIN_OUTPUT_DIR}
+        RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL     ${BIN_OUTPUT_DIR}
+    )
+
     target_link_libraries(${FNAME} PRIVATE ${LIB_TARGET} CommonConfig)
     target_link_libraries(${FNAME} PRIVATE ${JULIA_LIB})
 
-    target_include_directories(${FNAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sandbox)
     target_include_directories(${FNAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_include_directories(${FNAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
     target_include_directories(${FNAME} SYSTEM PRIVATE ${JULIA_INCLUDE_DIR})
 
     if (DEFINED CLANG_TIDY_CMD AND NOT NO_TIDY)
@@ -381,17 +480,19 @@ foreach (SBOX_FILE ${SANDBOX_SOURCES})
     endif()
 
     # copy lib next to sandbox executable
-    add_custom_command(TARGET ${FNAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:${LIB_TARGET}>
-        $<TARGET_FILE_DIR:${FNAME}>
-    )
+    if (WIN32)
+        add_custom_command(TARGET ${FNAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:${LIB_TARGET}>
+            $<TARGET_FILE_DIR:${FNAME}>
+        )
+    endif()
 
     # create wrappers for executable, with Julia first in PATH
     if (WIN32)
         file(TO_NATIVE_PATH "${JULIA_BINDIR}" JULIA_BINDIR_NATIVE)
         
-        file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/run_${FNAME}.bat"
+        file(GENERATE OUTPUT "${BIN_OUTPUT_DIR}/run_${FNAME}.bat"
             CONTENT "@echo off\nset PATH=${JULIA_BINDIR_NATIVE};%PATH%\n\"$<TARGET_FILE:${FNAME}>\" %*"
             CONDITION $<CONFIG:${CMAKE_BUILD_TYPE}>
         )

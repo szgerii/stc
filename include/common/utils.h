@@ -263,9 +263,10 @@ public:
 // defers the execution of a Callable until the object's destruction
 template <typename DeferredFn>
 requires std::invocable<DeferredFn>
-struct ScopeGuard {
+class ScopeGuard {
     DeferredFn deferred_fn;
 
+public:
     explicit ScopeGuard(DeferredFn fn)
         : deferred_fn{fn} {}
 
@@ -275,6 +276,40 @@ struct ScopeGuard {
     ScopeGuard& operator=(const ScopeGuard&) = delete;
     ScopeGuard(ScopeGuard&&)                 = delete;
     ScopeGuard& operator=(ScopeGuard&&)      = delete;
+};
+
+class FileRAII {
+    FILE* file = nullptr;
+
+public:
+    explicit FileRAII(const std::string& path, const char* mode) {
+        file = fopen(path.c_str(), mode);
+    }
+
+    ~FileRAII() {
+        if (file != nullptr)
+            fclose(file);
+    }
+
+    FileRAII(const FileRAII&)            = delete;
+    FileRAII& operator=(const FileRAII&) = delete;
+
+    FileRAII(FileRAII&& other) noexcept
+        : file{other.file} {
+        other.file = nullptr;
+    }
+    FileRAII& operator=(FileRAII&& other) {
+        if (this == &other)
+            return *this;
+
+        if (file != nullptr)
+            fclose(file);
+
+        this->file = other.file;
+        other.file = nullptr;
+    }
+
+    FILE* get() const { return file; }
 };
 
 } // namespace stc

@@ -40,8 +40,9 @@ public:
     bool success() const { return _success; }
     bool is_interactive() const { return in_interactive_ctx; }
 
-    TypeId visit_default_case();
     void finalize();
+
+    TypeId visit_default_case();
 
     // clang-format off
     #define X(type, kind) STC_AST_VISITOR_DECL(TypeId, type)
@@ -65,10 +66,10 @@ public:
         constexpr bool operator==(const TypeCheckResultOption& opt) const { return value == opt; }
     };
 
-    TypeCheckResult check_type_against(TypeId actual_type, TypeId expected_type,
+    TypeCheckResult check_type_against(TypeId actual_type, TypeId checked_type,
                                        const Expr& base_expr) const;
 
-    TypeCheckResult check(Expr& expr, TypeId expected, bool allow_pretyped = false,
+    TypeCheckResult check(Expr& expr, TypeId checked_type, bool allow_pretyped = false,
                           bool handles_casts = false);
 
     bool check(NodeId& node_id, TypeId expected, bool allow_pretyped = false);
@@ -95,18 +96,18 @@ public:
         return infer(*expr, allow_pretyped);
     }
 
-private:
     bool is_checking() const { return !expected_type.is_null(); }
     bool is_inferring() const { return !is_checking(); }
 
+private:
     jl_datatype_t* to_jl_type(TypeId type);
 
-    NodeId try_unwrap_cmpd(NodeId cmpd_expr);
+    NodeId try_unwrap_cmpd(NodeId cmpd_id);
 
     bool is_method_sig_redecl(const MethodDecl& method_decl, const FunctionDecl& fn_decl);
 
     TypeId ret_type_of_jl_call(jl_function_t* fn, const std::vector<TypeId>& arg_types,
-                               const Expr& call_expr);
+                               const Expr& base_expr);
 
     std::optional<MethodDecl*> find_sig_match(const FunctionDecl& fn_decl,
                                               const std::vector<TypeId>& arg_types,

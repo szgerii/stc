@@ -64,7 +64,7 @@ public:
         return td->is<T>();
     }
 
-    [[nodiscard]] static TypeId void_td() { return TypeId::void_id(); }
+    [[nodiscard]] TypeId void_td() { return TypeId::void_id(); }
     [[nodiscard]] TypeId bool_td();
     [[nodiscard]] TypeId int_td(uint32_t width, bool is_signed);
     [[nodiscard]] TypeId float_td(uint32_t width,

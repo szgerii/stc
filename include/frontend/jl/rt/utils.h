@@ -39,4 +39,22 @@ inline jl_function_t* find_jl_function(std::string_view lookup_chain, rt::JuliaR
     return find_jl_function(lookup_chain, env, env.module_cache.main_mod, throw_on_not_found);
 }
 
+// these were mainly added to satisfy clang-tidy's no implicit int -> bool cast rule
+// without having to disable it globally, or mark it at every check to these
+
+[[nodiscard]]
+inline bool is_type(jl_value_t* value) {
+    return jl_is_type(value) != 0;
+}
+
+[[nodiscard]]
+inline bool is_concrete_type(jl_value_t* value) {
+    return jl_is_concrete_type(value) != 0;
+}
+
+[[nodiscard]]
+inline bool is_array_type(jl_datatype_t* value) {
+    return jl_is_array_type(value) != 0;
+}
+
 } // namespace stc::jl::rt

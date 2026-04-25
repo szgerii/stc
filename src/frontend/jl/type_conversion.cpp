@@ -1,16 +1,19 @@
 #include "frontend/jl/type_conversion.h"
+#include "frontend/jl/rt/utils.h"
 
 namespace stc::jl {
 
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 jl_datatype_t* TypeToJLVisitor::visit_null_id() {
     return nullptr;
 }
 
-jl_datatype_t* TypeToJLVisitor::visit(VoidTD) {
+// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
+jl_datatype_t* TypeToJLVisitor::visit([[maybe_unused]] VoidTD void_td) {
     return nullptr;
 }
 
-jl_datatype_t* TypeToJLVisitor::visit(BoolTD) {
+jl_datatype_t* TypeToJLVisitor::visit([[maybe_unused]] BoolTD bool_td) {
     return type_cache.bool_;
 }
 
@@ -26,9 +29,10 @@ jl_datatype_t* TypeToJLVisitor::visit(IntTD int_td) {
             return int_td.is_signed ? type_cache.int64 : type_cache.uint64;
         case 128:
             return int_td.is_signed ? type_cache.int128 : type_cache.uint128;
-    }
 
-    return nullptr;
+        default:
+            return nullptr;
+    }
 }
 
 jl_datatype_t* TypeToJLVisitor::visit(FloatTD float_td) {
@@ -42,9 +46,10 @@ jl_datatype_t* TypeToJLVisitor::visit(FloatTD float_td) {
             return type_cache.float32;
         case 64:
             return type_cache.float64;
-    }
 
-    return nullptr;
+        default:
+            return nullptr;
+    }
 }
 
 jl_datatype_t* TypeToJLVisitor::visit(VectorTD vec_td) {
@@ -63,7 +68,7 @@ jl_datatype_t* TypeToJLVisitor::visit(VectorTD vec_td) {
     }
 
     jl_value_t* n_tp = jl_box_long(vec_td.component_count);
-    jl_value_t* t_tp = reinterpret_cast<jl_value_t*>(dispatch(vec_td.component_type_id));
+    auto* t_tp       = reinterpret_cast<jl_value_t*>(dispatch(vec_td.component_type_id));
 
     jl_value_t* dt_v =
         jl_apply_type2(reinterpret_cast<jl_value_t*>(type_cache.vec_nt_ua), n_tp, t_tp);
@@ -91,11 +96,11 @@ jl_datatype_t* TypeToJLVisitor::visit([[maybe_unused]] StructTD struct_td) {
     return nullptr;
 }
 
-jl_datatype_t* TypeToJLVisitor::visit(FunctionTD) {
+jl_datatype_t* TypeToJLVisitor::visit([[maybe_unused]] FunctionTD fn_td) {
     return nullptr;
 }
 
-jl_datatype_t* TypeToJLVisitor::visit(MethodTD) {
+jl_datatype_t* TypeToJLVisitor::visit([[maybe_unused]] MethodTD method_td) {
     return nullptr;
 }
 
@@ -153,7 +158,7 @@ TypeId parse_jl_type(jl_datatype_t* dt, JLCtx& ctx) {
     if (dt == type_cache.float64) return ctx.jl_Float64_t();
     // clang-format on
 
-    if (jl_is_array_type(dt)) {
+    if (rt::is_array_type(dt)) {
         jl_value_t* eltype_tp = jl_tparam0(dt);
         jl_value_t* dim_tp    = jl_tparam1(dt);
 
@@ -181,12 +186,14 @@ TypeId parse_jl_type(jl_datatype_t* dt, JLCtx& ctx) {
             if (!jl_is_int64(n_tp))
                 throw std::logic_error{"unexpected non-int64 type param in VecNT type's N"};
 
-            int64_t n_i64 = jl_unbox_uint64(n_tp);
+            int64_t n_i64 = jl_unbox_int64(n_tp);
 
             if (n_i64 < 1)
                 throw std::runtime_error{"non-positive N value for VecNT's N type param"};
 
-            if (n_i64 > std::numeric_limits<uint32_t>::max())
+            static constexpr auto u32_max =
+                static_cast<int64_t>(std::numeric_limits<uint32_t>::max());
+            if (n_i64 > u32_max)
                 throw std::runtime_error{"N value for VecNT's N type param is too large"};
 
             n = static_cast<uint32_t>(n_i64);

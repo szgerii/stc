@@ -20,7 +20,10 @@ Checks: >
   -readability-function-cognitive-complexity,
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -readability-isolate-declaration,
-  -readability-avoid-nested-conditional-operator
+  -readability-avoid-nested-conditional-operator,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -bugprone-easily-swappable-parameters,
+  -modernize-use-designated-initializers
 
 CheckOptions:
   readability-magic-numbers.IgnorePowersOf2IntegerValues: true

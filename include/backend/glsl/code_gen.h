@@ -14,22 +14,21 @@ class GLSLCodeGenVisitor final : public SIRVisitor<GLSLCodeGenVisitor, GLSLCtx, 
 
     std::stringstream out{};
     size_t indent_level = 0U;
-    bool successful_gen = true;
+    bool _success       = true;
 
 public:
     explicit GLSLCodeGenVisitor(GLSLCtx& ctx)
         : SIRVisitor<GLSLCodeGenVisitor, GLSLCtx, void>{ctx} {
 
-        // TODO: config for version
-        out << "#version 460\n\n// THIS CODE WAS AUTO-GENERATED USING A JULIA TO GLSL "
-               "TRANSPILER\n\n";
+        out << "#version " << ctx.config.target_version << "\n\n";
+        out << "// THIS CODE WAS AUTO-GENERATED USING A JULIA TO GLSL TRANSPILER\n\n";
     }
 
     std::string result() {
         out.flush();
         return out.str();
     }
-    bool successful() const { return successful_gen; }
+    bool success() const { return _success; }
 
     // clang-format off
     #define X(type, kind) STC_AST_VISITOR_DECL(void, type)

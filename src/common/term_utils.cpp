@@ -10,11 +10,11 @@ bool TerminalInfo::supports_color() {
         return supported;
     inited = true;
 
-    if (std::getenv("NO_COLOR"))
+    if (std::getenv("NO_COLOR") != nullptr)
         return false;
 
 #ifdef _WIN32
-    if (!_isatty(_fileno(stdout)) || !_isatty(_fileno(stderr)))
+    if (_isatty(_fileno(stdout)) == 0 || _isatty(_fileno(stderr)) == 0)
         return false;
 
     HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE),
@@ -24,14 +24,16 @@ bool TerminalInfo::supports_color() {
         return false;
 
     DWORD stdout_mode = 0, stderr_mode = 0;
-    if (!GetConsoleMode(stdout_handle, &stdout_mode) ||
-        !GetConsoleMode(stderr_handle, &stderr_mode))
+
+    if (GetConsoleMode(stdout_handle, &stdout_mode) == 0 ||
+        GetConsoleMode(stderr_handle, &stderr_mode) == 0)
         return false;
 
     stdout_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_PROCESSED_OUTPUT;
     stderr_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_PROCESSED_OUTPUT;
 
-    if (!SetConsoleMode(stdout_handle, stdout_mode) || !SetConsoleMode(stderr_handle, stderr_mode))
+    if (SetConsoleMode(stdout_handle, stdout_mode) == 0 ||
+        SetConsoleMode(stderr_handle, stderr_mode) == 0)
         return false;
 
     supported = true;
