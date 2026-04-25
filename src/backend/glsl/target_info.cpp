@@ -1,5 +1,6 @@
 #include "backend/glsl/target_info.h"
 #include "backend/glsl/builtin_data.h"
+#include "types/type_to_string.h"
 
 #include <algorithm>
 
@@ -51,17 +52,6 @@ TypeId builtin_ty_to_id(BuiltinType ty, GLSLTypes& types) {
 }
 
 } // namespace detail
-
-GLSLTargetInfo GLSLTargetInfo::create_instance(GLSLTypes types) {
-    GlobalList globals = create_globals(types);
-    FnList functions   = create_fns(types);
-
-    // globals and functions should already be stored in alphabetical order name-wise in the binary
-    // so parsing them in sequential order should already yield a sorted result
-    // (if not, an assert will catch it in the base class)
-
-    return GLSLTargetInfo{std::move(globals), std::move(functions), std::move(types)};
-}
 
 TargetInfo::GlobalList GLSLTargetInfo::create_globals(GLSLTypes& types) {
     return {

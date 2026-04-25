@@ -65,7 +65,7 @@ struct LQPayload {
 
 #define X(name, ...)                                                                               \
     if (kind == QualKind::lq_##name) {                                                             \
-        lq_##name = value;                                                                         \
+        this->lq_##name = value;                                                                   \
         return;                                                                                    \
     }
 #include "types/qualifier_defs/layout_value.def"
@@ -74,22 +74,21 @@ struct LQPayload {
         throw std::logic_error{"unexpected qual kind in LQPayload's set"};
     }
 
-    uint32_t get_qual_value(QualKind kind) const {
+    int32_t get_qual_value(QualKind kind) const {
         if (!is_value_layout_qual(kind))
             throw std::logic_error{"get_qual_value called with a qualifier that is not a value "
                                    "carrying layout qualifier"};
 
+        switch (kind) {
 #define X(name)                                                                                    \
     case QualKind::lq_##name:                                                                      \
         return lq_##name;
 
-        switch (kind) {
 #include "types/qualifier_defs/layout_value.def"
 
             default:
                 throw std::logic_error{"unaccounted qualifier kind in LQPayload's get_qual_value"};
         }
-
 #undef X
     }
 

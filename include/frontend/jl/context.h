@@ -46,8 +46,11 @@ public:
 
     JLCtx(const JLCtx&)            = delete;
     JLCtx& operator=(const JLCtx&) = delete;
-    JLCtx(JLCtx&&)                 = default;
-    JLCtx& operator=(JLCtx&&)      = default;
+
+    // CLEANUP: these are currently only disabled because RT module cache stores refs
+    // this does not affect partial move semantics, so it's not a priority
+    JLCtx(JLCtx&&)            = delete;
+    JLCtx& operator=(JLCtx&&) = delete;
 
 protected:
     template <typename T, typename U>

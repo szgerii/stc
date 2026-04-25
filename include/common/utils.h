@@ -278,6 +278,10 @@ public:
     ScopeGuard& operator=(ScopeGuard&&)      = delete;
 };
 
+#ifdef _MSC_VER
+    #pragma warning(push)
+    #pragma warning(disable : 4996)
+#endif
 class FileRAII {
     FILE* file = nullptr;
 
@@ -307,10 +311,15 @@ public:
 
         this->file = other.file;
         other.file = nullptr;
+
+        return *this;
     }
 
     FILE* get() const { return file; }
 };
+#if _MSC_VER
+    #pragma warning(pop)
+#endif
 
 } // namespace stc
 

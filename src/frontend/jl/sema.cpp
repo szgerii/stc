@@ -2218,9 +2218,9 @@ TypeId JLSema::visit_FunctionCall(FunctionCall& fn_call) {
         assert(ctx.target_info != nullptr);
 
         std::string_view fn_name_str = ctx.get_sym(builtin_fn->fn_name());
-
         TypeId ret_ty =
             ctx.target_info->builtin_fn_ret_ty_with_impl_cast(fn_name_str, arg_types).first;
+
         if (ret_ty.is_null()) {
             return fail(std::format("builtin function does not have an overload for the inferred "
                                     "argument types (in call to '{}')",

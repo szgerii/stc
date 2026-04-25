@@ -160,7 +160,7 @@ void SymbolRes::visit_MethodDecl(MethodDecl& mdecl) {
 
     auto it = scope.local_fn_table.find(mdecl.identifier);
     if (it == scope.local_fn_table.end())
-        scope.local_fn_table.try_emplace(mdecl.identifier, std::vector{{&mdecl}},
+        scope.local_fn_table.try_emplace(mdecl.identifier, std::vector({&mdecl}),
                                          LFTEntry::State::Unresolved);
     else
         it->second.method_decls.emplace_back(&mdecl);

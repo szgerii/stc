@@ -24,10 +24,13 @@ public:
         out << "// THIS CODE WAS AUTO-GENERATED USING A JULIA TO GLSL TRANSPILER\n\n";
     }
 
-    std::string result() {
+    // ! this performs a move on the internal buffer
+    std::string move_result() {
         out.flush();
-        return out.str();
+
+        return std::move(out).str();
     }
+
     bool success() const { return _success; }
 
     // clang-format off

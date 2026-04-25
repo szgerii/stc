@@ -1,10 +1,13 @@
-$build_timer = [System.Diagnostics.Stopwatch]::StartNew()
-
 $PROJECT_ROOT = (Resolve-Path "$PSScriptRoot\..").Path
 $BASE_BUILD_DIR = Join-Path $PROJECT_ROOT "build"
 
 Write-Host "project root: $PROJECT_ROOT" -ForegroundColor DarkCyan
 Write-Host "build root:   $BASE_BUILD_DIR" -ForegroundColor DarkCyan
+
+$clean_first = $false;
+if ($args -contains "--clean-first") {
+    $clean_first = $true;
+}
 
 # assumes msvc is the default c/cpp compiler
 # if this is not the case and cl is in path, it can simply be added here
@@ -19,6 +22,8 @@ $configs = @(
     @{ Name = "gcc-tidy";  Gen = "Ninja"; CC = "gcc";   CXX = "g++";     Type = "Debug";   NoTidy = "OFF"; Build = $true }
 )
 
+$build_timer = [System.Diagnostics.Stopwatch]::StartNew()
+
 $successful_builds = 0
 $current_step = 0
 
@@ -31,19 +36,19 @@ foreach ($cfg in $configs) {
     if (-Not (Test-Path $build_dir)) {
         Write-Host "`n$progress >> directory $build_dir not found, configuring $($cfg.Name)..." -ForegroundColor Cyan
 
-        $cmakeArgs = @("-S", $PROJECT_ROOT, "-B", $build_dir)
+        $cmake_config_args = @("-S", $PROJECT_ROOT, "-B", $build_dir)
 
-        if ($cfg.Gen) { $cmakeArgs += "-G", $cfg.Gen }
-        if ($cfg.CC)  { $cmakeArgs += "-DCMAKE_C_COMPILER=$($cfg.CC)" }
-        if ($cfg.CXX) { $cmakeArgs += "-DCMAKE_CXX_COMPILER=$($cfg.CXX)" }
+        if ($cfg.Gen) { $cmake_config_args += "-G", $cfg.Gen }
+        if ($cfg.CC)  { $cmake_config_args += "-DCMAKE_C_COMPILER=$($cfg.CC)" }
+        if ($cfg.CXX) { $cmake_config_args += "-DCMAKE_CXX_COMPILER=$($cfg.CXX)" }
 
-        $cmakeArgs += "-DCMAKE_BUILD_TYPE=$($cfg.Type)"
-        $cmakeArgs += "-DNO_SAN=ON"
-        $cmakeArgs += "-DNO_TIDY=$($cfg.NoTidy)"
-        $cmakeArgs += "-DBUILD_TESTING=OFF"
+        $cmake_config_args += "-DCMAKE_BUILD_TYPE=$($cfg.Type)"
+        $cmake_config_args += "-DNO_SAN=ON"
+        $cmake_config_args += "-DNO_TIDY=$($cfg.NoTidy)"
+        $cmake_config_args += "-DBUILD_TESTING=OFF"
 
-        Write-Host "$progress >> cmake $($cmakeArgs -join ' ')`n" -ForegroundColor Yellow
-        & cmake $cmakeArgs
+        Write-Host "$progress >> cmake $($cmake_config_args -join ' ')`n" -ForegroundColor Yellow
+        & cmake $cmake_config_args
         
         if ($LASTEXITCODE -ne 0) {
             Write-Host "$progress >> configuration failed for $($cfg.Name), skipping build." -ForegroundColor Red
@@ -63,8 +68,13 @@ foreach ($cfg in $configs) {
     Write-Host "`n$progress >> building $($cfg.Name)..." -ForegroundColor Cyan
 
     # append --config because msvc
-    Write-Host "$progress >> cmake --build $build_dir --config $($cfg.Type) -j`n" -ForegroundColor Yellow
-    & cmake --build $build_dir --config $cfg.Type -j
+    $cmake_build_args = @("--build", $build_dir, "--config", $($cfg.Type), "-j")
+    if ($clean_first) {
+        $cmake_build_args += "--clean-first";
+    }
+
+    Write-Host "$progress >> cmake $($cmake_build_args -join ' ')`n" -ForegroundColor Yellow
+    & cmake $cmake_build_args
 
     if ($LASTEXITCODE -eq 0) {
         $successful_builds++;

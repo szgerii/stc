@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace stc {
 
@@ -21,8 +22,10 @@ struct TranspilerConfig {
     bool print_conv_fail_reason      = false;
     bool coerce_to_f32               = true;
     bool coerce_to_i32               = true;
-
-    std::string target_version = "460";
+    bool dump_parsed                 = false;
+    bool dump_sema                   = false;
+    bool dump_lowered                = false;
+    std::string target_version       = "460";
 };
 
 } // namespace stc

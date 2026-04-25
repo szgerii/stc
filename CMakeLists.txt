@@ -302,6 +302,7 @@ target_link_libraries(${CLI_TARGET} PRIVATE ${LIB_TARGET} CommonConfig ${JULIA_L
 
 target_include_directories(${CLI_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(${CLI_TARGET} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+target_include_directories(${CLI_TARGET} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/cli)
 target_include_directories(${CLI_TARGET} SYSTEM PRIVATE ${JULIA_INCLUDE_DIR})
 
 if (DEFINED CLANG_TIDY_CMD AND NOT NO_TIDY)

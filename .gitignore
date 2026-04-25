@@ -23,3 +23,6 @@ vs_install/
 
 # imgui
 imgui.ini
+
+# STJL Pkg
+STJL/Manifest.toml

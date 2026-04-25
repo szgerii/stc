@@ -18,14 +18,6 @@ STC_FORCE_INLINE jl_sym_t* is_sym(jl_value_t* value, jl_sym_t* checked_sym) {
     return sym == checked_sym ? sym : nullptr;
 }
 
-STC_FORCE_INLINE jl_sym_t* is_sym(jl_value_t* value, std::string_view checked_sym) {
-    if (value == nullptr || !jl_is_symbol(value))
-        return nullptr;
-
-    auto* sym = stc::jl::safe_cast<jl_sym_t>(value);
-    return jl_symbol_name(sym) == checked_sym ? sym : nullptr;
-}
-
 STC_FORCE_INLINE jl_expr_t* to_expr_if(jl_value_t* value, jl_sym_t* head) {
     if (value == nullptr || !jl_is_expr(value))
         return nullptr;
