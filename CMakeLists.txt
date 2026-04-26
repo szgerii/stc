@@ -4,7 +4,7 @@ include(FetchContent)
 
 # Version info
 
-project(ShaderTranspilerCore VERSION 0.4.0)
+project(ShaderTranspilerCore VERSION 0.5.0)
 set(STC_VERSION_SUFFIX "")
 set(STC_SOVERSION "0") # for lib ABI-compatibility
 

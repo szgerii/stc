@@ -1,6 +1,6 @@
 using BinaryBuilder, Pkg, Dates
 
-name = "STC"
+name = "stc"
 
 # a bit hacky, but keeps the CMake file as the single source of truth for versioning
 cmake_content = read("CMakeLists.txt", String)
