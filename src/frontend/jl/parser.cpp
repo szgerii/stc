@@ -10,6 +10,7 @@
 
 namespace {
 
+[[maybe_unused]]
 STC_FORCE_INLINE jl_sym_t* is_sym(jl_value_t* value, jl_sym_t* checked_sym) {
     if (value == nullptr || !jl_is_symbol(value))
         return nullptr;
@@ -28,6 +29,14 @@ STC_FORCE_INLINE jl_expr_t* to_expr_if(jl_value_t* value, jl_sym_t* head) {
 
 STC_FORCE_INLINE bool is_expr(jl_value_t* value, jl_sym_t* head) {
     return to_expr_if(value, head) != nullptr;
+}
+
+stc::SymbolId get_tmp_sym(stc::SymbolPool& sym_pool) {
+    static uint32_t counter = 0;
+
+    std::string temp_name{fmt::format("stc_tmp_sym_{}", counter++)};
+
+    return sym_pool.get_id(temp_name);
 }
 
 } // namespace
@@ -750,15 +759,69 @@ NodeId JLParser::parse_assignment(jl_expr_t* expr, size_t nargs) {
     if (is_expr(lhs, sym_cache.dbl_col))
         return parse_qualified_decl(reinterpret_cast<jl_value_t*>(expr), &JLParser::parse_var_decl);
 
+    jl_value_t* rhs = jl_exprarg(expr, 1);
+
+    if (is_expr(lhs, sym_cache.tuple) && is_expr(rhs, sym_cache.tuple))
+        return parse_tuple_assignment(expr);
+
     SrcLocationId outer_loc = cur_loc;
 
     NodeId parsed_lhs = parse(lhs);
-    NodeId parsed_rhs = parse(jl_exprarg(expr, 1));
+    NodeId parsed_rhs = parse(rhs);
 
     if (parsed_lhs.is_null() || parsed_rhs.is_null())
         return NodeId::null_id();
 
     return emplace_node<Assignment>(outer_loc, parsed_lhs, parsed_rhs);
+}
+
+NodeId JLParser::parse_tuple_assignment(jl_expr_t* expr) {
+    // these should all be prevalidated by the caller
+    assert(expr->head == sym_cache.eq);
+    assert(jl_expr_nargs(expr) == 2);
+    assert(is_expr(jl_exprarg(expr, 0), sym_cache.tuple));
+    assert(is_expr(jl_exprarg(expr, 1), sym_cache.tuple));
+
+    SrcLocationId assign_loc = cur_loc;
+
+    auto* lhs_tuple = safe_cast<jl_expr_t>(jl_exprarg(expr, 0));
+    auto* rhs_tuple = safe_cast<jl_expr_t>(jl_exprarg(expr, 1));
+
+    size_t lhs_n = jl_expr_nargs(lhs_tuple), rhs_n = jl_expr_nargs(rhs_tuple);
+    if (lhs_n != rhs_n)
+        return fail("non-element-wise tuple assignment is not supported (lhs tuple length has to "
+                    "match rhs)");
+
+    std::vector<NodeId> assignments_block{};
+    assignments_block.resize(lhs_n * 2); // rhs -> tmp and tmp -> lhs assignments
+
+    for (size_t i = 0; i < lhs_n; i++) {
+        NodeId lhs = parse(jl_exprarg(lhs_tuple, i));
+        NodeId rhs = parse(jl_exprarg(rhs_tuple, i));
+
+        if (lhs.is_null() || rhs.is_null()) {
+            if (_success)
+                fail("couldn't parse member in tuple assignment");
+
+            // their place remains set to the default initialized null id
+            continue;
+        }
+
+        SymbolId tmp_sym = get_tmp_sym(ctx.sym_pool);
+
+        NodeId tmp_lit_rhs = emplace_node<SymbolLiteral>(assign_loc, tmp_sym);
+        NodeId tmp_dre_rhs = emplace_node<DeclRefExpr>(assign_loc, tmp_lit_rhs);
+        NodeId rhs_to_tmp  = emplace_node<Assignment>(assign_loc, tmp_dre_rhs, rhs);
+
+        NodeId tmp_lit_lhs = emplace_node<SymbolLiteral>(assign_loc, tmp_sym);
+        NodeId tmp_dre_lhs = emplace_node<DeclRefExpr>(assign_loc, tmp_lit_lhs);
+        NodeId tmp_to_lhs  = emplace_node<Assignment>(assign_loc, lhs, tmp_dre_lhs);
+
+        assignments_block[i]         = rhs_to_tmp;
+        assignments_block[lhs_n + i] = tmp_to_lhs;
+    }
+
+    return emplace_node<CompoundExpr>(assign_loc, std::move(assignments_block));
 }
 
 NodeId JLParser::parse_block(jl_expr_t* expr, size_t nargs) {

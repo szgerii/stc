@@ -71,6 +71,10 @@ public:
     [[nodiscard]] TypeId gl_matNxM(uint32_t n, uint32_t m) { return gl_TmatNxM(gl_float, n, m); }
     [[nodiscard]] TypeId gl_dmatNxM(uint32_t n, uint32_t m) { return gl_TmatNxM(gl_double, n, m); }
 
+    [[nodiscard]] TypeId gl_array(TypeId el_type, uint32_t length) {
+        return type_pool.array_td(el_type, length);
+    }
+
     [[nodiscard]] bool is_gl_scalar_type(TypeId T) const {
         return T == gl_float || T == gl_double || T == gl_bool || T == gl_int || T == gl_uint;
     }

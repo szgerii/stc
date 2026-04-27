@@ -16,9 +16,13 @@ class GLSLCodeGenVisitor final : public SIRVisitor<GLSLCodeGenVisitor, GLSLCtx, 
     size_t indent_level = 0U;
     bool _success       = true;
 
+    SymbolId sym_length;
+
 public:
     explicit GLSLCodeGenVisitor(GLSLCtx& ctx)
         : SIRVisitor<GLSLCodeGenVisitor, GLSLCtx, void>{ctx} {
+
+        sym_length = ctx.sym_pool.get_id("length");
 
         out << "#version " << ctx.config.target_version << "\n\n";
         out << "// THIS CODE WAS AUTO-GENERATED USING A JULIA TO GLSL TRANSPILER\n\n";

@@ -847,6 +847,28 @@ TypeId JLSema::visit_MethodDecl(MethodDecl& method) {
         return fail("method declaration with non-compound expression as a body is not allowed",
                     method);
 
+    if (method.identifier == sym_main) {
+        if (!method.ret_type.is_null() && method.ret_type != ctx.jl_Nothing_t())
+            return fail("main function with return type other than Nothing is not allowed", method);
+
+        method.ret_type = ctx.jl_Nothing_t();
+
+        auto* main_body_cmpd = ctx.get_and_dyn_cast<CompoundExpr>(method.body);
+        assert(main_body_cmpd != nullptr);
+
+        if (!ctx.isa<ReturnStmt>(main_body_cmpd->body.back())) {
+            SrcLocationId impl_ret_loc = !main_body_cmpd->body.empty()
+                                             ? ctx.get_node(main_body_cmpd->body.back())->location
+                                             : main_body_cmpd->location;
+
+            NodeId empty_ret = ctx.emplace_node<ReturnStmt>(impl_ret_loc).first;
+            main_body_cmpd->body.emplace_back(empty_ret);
+        }
+
+        if (!method.param_decls.empty())
+            return fail("main function with non-zero argument count is not allowed", method);
+    }
+
     NodeId method_id = ctx.calculate_node_id(method);
 
     auto expected_bt = binding_of(method.identifier);

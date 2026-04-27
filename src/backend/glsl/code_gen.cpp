@@ -387,6 +387,18 @@ void GLSLCodeGenVisitor::visit_Assignment(Assignment& assign) {
 }
 
 void GLSLCodeGenVisitor::visit_FunctionCall(FunctionCall& fn_call) {
+    if (fn_call.fn_name == sym_length && fn_call.args.size() == 1) {
+        auto* arg_expr = ctx.get_and_dyn_cast<Expr>(fn_call.args[0]);
+
+        if (arg_expr != nullptr && !arg_expr->type().is_null() &&
+            ctx.type_pool.get_td(arg_expr->type()).is_array()) {
+
+            visit(fn_call.args[0]);
+            out << ".length()";
+            return;
+        }
+    }
+
     out << ctx.get_sym(fn_call.fn_name) << '(';
 
     for (size_t i = 0; i < fn_call.args.size(); i++) {

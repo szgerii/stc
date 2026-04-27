@@ -59,6 +59,7 @@ private:
                                 ParseCallback next_parser = &JLParser::parse);
     NodeId parse_param_decl(jl_value_t* param_v);
     NodeId parse_field_decl(jl_value_t* field_decl_v);
+    NodeId parse_tuple_assignment(jl_expr_t* expr);
 
     NodeId parse_method_decl(jl_value_t* val) {
         jl_expr_t* expr = jl_is_expr(val) ? safe_cast<jl_expr_t>(val) : nullptr;
