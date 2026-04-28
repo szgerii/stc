@@ -1896,14 +1896,14 @@ TypeId JLSema::visit_DeclRefExpr(DeclRefExpr& dre) {
 
             dre.decl = vdecl_id;
             return vdecl->type;
-        } else {
-            return fail(
-                fmt::format(
-                    "found binding for symbol '{}' through Julia in the global scope, but uniform "
-                    "capturing does not support its type: {}",
-                    sym_str, type_str(glob_ty)),
-                dre);
         }
+
+        return fail(
+            fmt::format(
+                "found binding for symbol '{}' through Julia in the global scope, but uniform "
+                "capturing does not support its type: {}",
+                sym_str, type_str(glob_ty)),
+            dre);
     }
 
     return report_undef();

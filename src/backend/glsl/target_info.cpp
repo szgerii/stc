@@ -54,15 +54,141 @@ TypeId builtin_ty_to_id(BuiltinType ty, GLSLTypes& types) {
 } // namespace detail
 
 TargetInfo::GlobalList GLSLTargetInfo::create_globals(GLSLTypes& types) {
-    return {
+    TargetInfo::GlobalList globals = {
         // clang-format off
-        {"gl_FragCoord",   types.gl_vec4},
-        {"gl_FragDepth",   types.gl_float},
-        {"gl_FrontFacing", types.gl_bool},
-        {"gl_InstanceID",  types.gl_int},
-        {"gl_Position",    types.gl_vec4},
+        // VERTEX SHADER (7.1.1)
+        {"gl_VertexID",             types.gl_int},
+        {"gl_InstanceID",           types.gl_int},
+        {"gl_DrawID",               types.gl_int},
+        {"gl_BaseVertex",           types.gl_int},
+        {"gl_BaseInstance",         types.gl_int},
+        {"gl_Position",             types.gl_vec4},
+        {"gl_PointSize",            types.gl_float},
+        {"gl_ClipDistance",         types.type_pool.any_array_td(types.gl_float)},
+        {"gl_CullDistance",         types.type_pool.any_array_td(types.gl_float)},
+
+        // TESSELLATION CONTROL/EVALUATION SHADER (7.1.2-7.1.3)
+        {"gl_PatchVerticesIn",      types.gl_int},
+        {"gl_PrimitiveID",          types.gl_int},
+        {"gl_InvocationID",         types.gl_int},
+        {"gl_TessLevelOuter",       types.gl_array(types.gl_float, 4)},
+        {"gl_TessLevelInner",       types.gl_array(types.gl_float, 2)},
+        {"gl_TessCoord",            types.gl_vec3},
+
+        // GEOMETRY SHADER (7.1.4)
+        {"gl_PrimitiveIDIn",        types.gl_int},
+        {"gl_Layer",                types.gl_int},
+        {"gl_ViewportIndex",        types.gl_int},
+
+        // FRAGMENT SHADER (7.1.5)
+        {"gl_FragCoord",            types.gl_vec4},
+        {"gl_FrontFacing",          types.gl_bool},
+        {"gl_PointCoord",           types.gl_vec2},
+        {"gl_HelperInvocation",     types.gl_bool},
+        {"gl_FragDepth",            types.gl_float},
+        {"gl_SampleID",             types.gl_int},
+        {"gl_SamplePosition",       types.gl_vec2},
+        {"gl_SampleMaskIn",         types.type_pool.any_array_td(types.gl_int)},
+        {"gl_SampleMask",           types.type_pool.any_array_td(types.gl_int)},
+
+        // COMPUTE SHADERS (7.1.6)
+        {"gl_NumWorkGroups",        types.gl_uvec3},
+        {"gl_WorkGroupSize",        types.gl_uvec3},
+        {"gl_WorkGroupID",          types.gl_uvec3},
+        {"gl_LocalInvocationID",    types.gl_uvec3},
+        {"gl_GlobalInvocationID",   types.gl_uvec3},
+        {"gl_LocalInvocationIndex", types.gl_uint},
+
+        // Compatibility Profile Built-In Language Variables (7.1.7)
+        {"gl_ClipVertex;",                               types.gl_vec4},
+        {"vec4 gl_FrontColor",                           types.gl_vec4},
+        {"vec4 gl_BackColor",                            types.gl_vec4},
+        {"vec4 gl_FrontSecondaryColor",                  types.gl_vec4},
+        {"vec4 gl_BackSecondaryColor",                   types.gl_vec4},
+        {"vec4 gl_TexCoord",                             types.gl_vec4},
+        {"float gl_FogFragCoord",                        types.gl_float},
+
+        // Built-In Constans (7.3)
+        {"gl_MaxVertexAttribs",                          types.gl_int},
+        {"gl_MaxVertexUniformVectors",                   types.gl_int},
+        {"gl_MaxVertexUniformComponents",                types.gl_int},
+        {"gl_MaxVertexOutputComponents",                 types.gl_int},
+        {"gl_MaxVaryingComponents",                      types.gl_int},
+        {"gl_MaxVaryingVectors",                         types.gl_int},
+        {"gl_MaxVertexTextureImageUnits",                types.gl_int},
+        {"gl_MaxVertexImageUniforms",                    types.gl_int},
+        {"gl_MaxVertexAtomicCounters",                   types.gl_int},
+        {"gl_MaxVertexAtomicCounterBuffers",             types.gl_int},
+        {"gl_MaxTessPatchComponents",                    types.gl_int},
+        {"gl_MaxPatchVertices",                          types.gl_int},
+        {"gl_MaxTessGenLevel",                           types.gl_int},
+        {"gl_MaxTessControlInputComponents",             types.gl_int},
+        {"gl_MaxTessControlOutputComponents",            types.gl_int},
+        {"gl_MaxTessControlTextureImageUnits",           types.gl_int},
+        {"gl_MaxTessControlUniformComponents",           types.gl_int},
+        {"gl_MaxTessControlTotalOutputComponents",       types.gl_int},
+        {"gl_MaxTessControlImageUniforms",               types.gl_int},
+        {"gl_MaxTessControlAtomicCounters",              types.gl_int},
+        {"gl_MaxTessControlAtomicCounterBuffers",        types.gl_int},
+        {"gl_MaxTessEvaluationInputComponents",          types.gl_int},
+        {"gl_MaxTessEvaluationOutputComponents",         types.gl_int},
+        {"gl_MaxTessEvaluationTextureImageUnits",        types.gl_int},
+        {"gl_MaxTessEvaluationUniformComponents",        types.gl_int},
+        {"gl_MaxTessEvaluationImageUniforms",            types.gl_int},
+        {"gl_MaxTessEvaluationAtomicCounters",           types.gl_int},
+        {"gl_MaxTessEvaluationAtomicCounterBuffers",     types.gl_int},
+        {"gl_MaxGeometryInputComponents",                types.gl_int},
+        {"gl_MaxGeometryOutputComponents",               types.gl_int},
+        {"gl_MaxGeometryImageUniforms",                  types.gl_int},
+        {"gl_MaxGeometryTextureImageUnits",              types.gl_int},
+        {"gl_MaxGeometryOutputVertices",                 types.gl_int},
+        {"gl_MaxGeometryTotalOutputComponents",          types.gl_int},
+        {"gl_MaxGeometryUniformComponents",              types.gl_int},
+        {"gl_MaxGeometryVaryingComponents",              types.gl_int},
+        {"gl_MaxGeometryAtomicCounters",                 types.gl_int},
+        {"gl_MaxGeometryAtomicCounterBuffers",           types.gl_int},
+        {"gl_MaxFragmentImageUniforms",                  types.gl_int},
+        {"gl_MaxFragmentInputComponents",                types.gl_int},
+        {"gl_MaxFragmentUniformVectors",                 types.gl_int},
+        {"gl_MaxFragmentUniformComponents",              types.gl_int},
+        {"gl_MaxFragmentAtomicCounters",                 types.gl_int},
+        {"gl_MaxFragmentAtomicCounterBuffers",           types.gl_int},
+        {"gl_MaxDrawBuffers",                            types.gl_int},
+        {"gl_MaxTextureImageUnits",                      types.gl_int},
+        {"gl_MinProgramTexelOffset",                     types.gl_int},
+        {"gl_MaxProgramTexelOffset",                     types.gl_int},
+        {"gl_MaxImageUnits",                             types.gl_int},
+        {"gl_MaxSamples",                                types.gl_int},
+        {"gl_MaxImageSamples",                           types.gl_int},
+        {"gl_MaxClipDistances",                          types.gl_int},
+        {"gl_MaxCullDistances",                          types.gl_int},
+        {"gl_MaxViewports",                              types.gl_int},
+        {"gl_MaxComputeImageUniforms",                   types.gl_int},
+        {"gl_MaxComputeWorkGroupCount",                  types.gl_ivec3},
+        {"gl_MaxComputeWorkGroupSize",                   types.gl_ivec3},
+        {"gl_MaxComputeUniformComponents",               types.gl_int},
+        {"gl_MaxComputeTextureImageUnits",               types.gl_int},
+        {"gl_MaxComputeAtomicCounters",                  types.gl_int},
+        {"gl_MaxComputeAtomicCounterBuffers",            types.gl_int},
+        {"gl_MaxCombinedTextureImageUnits",              types.gl_int},
+        {"gl_MaxCombinedImageUniforms",                  types.gl_int},
+        {"gl_MaxCombinedImageUnitsAndFragmentOutputs",   types.gl_int},
+        {"gl_MaxCombinedShaderOutputResources",          types.gl_int},
+        {"gl_MaxCombinedAtomicCounters",                 types.gl_int},
+        {"gl_MaxCombinedAtomicCounterBuffers",           types.gl_int},
+        {"gl_MaxCombinedClipAndCullDistances",           types.gl_int},
+        {"gl_MaxAtomicCounterBindings",                  types.gl_int},
+        {"gl_MaxAtomicCounterBufferSize",                types.gl_int},
+        {"gl_MaxTransformFeedbackBuffers",               types.gl_int},
+        {"gl_MaxTransformFeedbackInterleavedComponents", types.gl_int},
         // clang-format on
     };
+
+    // sort alphabetically
+    std::ranges::sort(
+        globals, [](const BuiltinGlobal& a, const BuiltinGlobal& b) { return a.name < b.name; });
+
+    return globals;
 }
 
 TargetInfo::FnList GLSLTargetInfo::create_fns(GLSLTypes& types) {
