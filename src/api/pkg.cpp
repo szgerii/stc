@@ -10,16 +10,19 @@ std::string* do_transpile(jl_value_t* expr_v, bool run_benchmark, stc::Transpile
     using namespace stc;
     using namespace stc::jl;
 
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+    auto get_failure_result = []() { return new std::string{}; };
+
     if (!jl_is_expr(expr_v)) {
-        std::cerr << "received non-Expr value\n";
-        return nullptr;
+        std::cerr << "received non-Expr value from Julia\n";
+        return get_failure_result();
     }
 
     std::optional<std::string> result = run_benchmark ? api::transpile<true>(expr_v, config)
                                                       : api::transpile<false>(expr_v, config);
 
     if (!result.has_value())
-        return nullptr;
+        return get_failure_result();
 
     // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
     return new std::string(std::move(*result));
@@ -64,9 +67,9 @@ extern "C" {
     }
 
     // gets the underlying C string data of a result handle
-    STC_API const char* stc_jl_cstr_from_handle(void* result_handle) noexcept {
+    STC_API const char* stc_jl_get_result(void* result_handle) noexcept {
         if (result_handle == nullptr) {
-            std::cerr << "nullptr passed to stc_jl_get_result_data\n";
+            std::cerr << "nullptr passed to stc_jl_get_result\n";
             return nullptr;
         }
 
@@ -74,7 +77,7 @@ extern "C" {
     }
 
     // frees the underlying string data belonging to a result handle
-    STC_API void stc_jl_free_handle(void* result_handle) noexcept {
+    STC_API void stc_jl_free_result(void* result_handle) noexcept {
         if (result_handle == nullptr) {
             std::cerr << "nullptr passed to stc_jl_free_result\n";
             return;

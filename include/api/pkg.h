@@ -15,8 +15,8 @@ extern "C" {
     // set cfg_hadle to NULL to use default configuration settings
     STC_API void* stc_jl_transpile(jl_value_t* expr_v, bool run_benchmark,
                                    void* cfg_handle) noexcept;
-    STC_API const char* stc_jl_cstr_from_handle(void* result_handle) noexcept;
-    STC_API void stc_jl_free_handle(void* result_handle) noexcept;
+    STC_API const char* stc_jl_get_result(void* result_handle) noexcept;
+    STC_API void stc_jl_free_result(void* result_handle) noexcept;
 
     // CONFIG API
 
