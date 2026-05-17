@@ -99,6 +99,7 @@ TypeId JLParser::resolve_type(jl_value_t* type) {
                 return parsed;
         }
 
+        // TODO: check for struct/iface types
         fail(fmt::format("unsupported Julia type: {}", jl_symbol_name(tsym)));
         return TypeId::null_id();
     }

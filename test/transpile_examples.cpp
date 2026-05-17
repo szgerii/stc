@@ -63,4 +63,8 @@ TEST_CASE("Transpile Example Julia Shaders", "[Transpiler]") {
     SECTION("julia_quat.jl") {
         REQUIRE(handle_transpile(shader_path("julia_quat.jl")).has_value());
     }
+
+    SECTION("bryant_kusner.jl") {
+        REQUIRE(handle_transpile(shader_path("bryant_kusner.jl")).has_value());
+    }
 }

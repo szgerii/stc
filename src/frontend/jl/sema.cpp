@@ -1,5 +1,4 @@
 #include "frontend/jl/sema.h"
-#include "base.h"
 #include "frontend/jl/ast_utils.h"
 #include "frontend/jl/dumper.h"
 #include "frontend/jl/rt/utils.h"
@@ -88,7 +87,7 @@ jl_datatype_t* JLSema::to_jl_type(TypeId type) {
 }
 
 NodeId JLSema::try_unwrap_cmpd(NodeId cmpd_id) {
-    auto* cmpd = ctx.get_and_dyn_cast<CompoundExpr>(cmpd_id);
+    const auto* cmpd = ctx.get_and_dyn_cast<CompoundExpr>(cmpd_id);
 
     if (cmpd == nullptr)
         return cmpd_id;
@@ -1033,12 +1032,12 @@ TypeId JLSema::visit_MethodDecl(MethodDecl& method) {
     param_types.reserve(method.param_decls.size());
 
     size_t first_init_idx = 0;
-    for (ParamDecl& pdecl : param_decls) {
-        if (!pdecl.default_initializer.is_null())
+    for (auto& pdecl : param_decls) {
+        if (!pdecl.get().default_initializer.is_null())
             break;
 
         // type might be null here. that's okay, as long as we can infer it later
-        param_types.emplace_back(pdecl.annot_type);
+        param_types.emplace_back(pdecl.get().annot_type);
         first_init_idx++;
     }
 
@@ -1163,19 +1162,19 @@ void JLSema::visit_method_body(MethodDecl& method) {
     bool any_failed = false;
     std::unordered_set<SymbolId> used_param_ids{};
     used_param_ids.reserve(param_decls.size());
-    for (ParamDecl& pdecl : param_decls) {
-        NodeId pdecl_id = ctx.calculate_node_id(pdecl);
+    for (auto& pdecl : param_decls) {
+        NodeId pdecl_id = ctx.calculate_node_id(pdecl.get());
 
-        bool used_before = !used_param_ids.emplace(pdecl.identifier).second;
+        bool used_before = !used_param_ids.emplace(pdecl.get().identifier).second;
         if (used_before) {
             fail(fmt::format("more than one parameter named '{}' in definition of function '{}'",
-                             ctx.get_sym(pdecl.identifier), ctx.get_sym(method.identifier)),
+                             ctx.get_sym(pdecl.get().identifier), ctx.get_sym(method.identifier)),
                  pdecl);
             any_failed = true;
             continue;
         }
 
-        bool added = st_register(pdecl.identifier, pdecl_id);
+        bool added = st_register(pdecl.get().identifier, pdecl_id);
         if (!added) {
             assert(!_success);
             any_failed = true;
@@ -1228,6 +1227,11 @@ void JLSema::visit_method_body(MethodDecl& method) {
         }
 
         method.ret_type = current_fn_ret;
+    }
+
+    for (auto [sym_id, bt] : current_scope().binding_table) {
+        if (bt == BindingType::Captured)
+            method.set_has_captured_syms(true);
     }
 
     current_method = prev_method;
@@ -1987,6 +1991,13 @@ TypeId JLSema::visit_Assignment(Assignment& assign) {
                 TypeId inf_type = infer(assign.value);
                 if (inf_type.is_null())
                     return TypeId::null_id();
+
+                // TODO
+                if (bt == BindingType::Captured) {
+                    return fail(fmt::format("forward capture of symbol '{}' is not allowed",
+                                            ctx.get_sym(sym->value)),
+                                assign);
+                }
 
                 auto [new_decl_id, new_decl_ptr] =
                     ctx.emplace_node<VarDecl>(sym->location, sym->value, inf_type, bt_to_st(bt));

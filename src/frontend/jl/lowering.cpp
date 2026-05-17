@@ -200,10 +200,13 @@ SIRNodeId JLLoweringVisitor::visit_VarDecl(VarDecl& var) {
 }
 
 SIRNodeId JLLoweringVisitor::visit_MethodDecl(MethodDecl& method) {
-    if (in_method)
-        return fail(
-            fmt::format("local functions are currently not supported (found local function: '{}')",
-                        sir_ctx.get_sym(method.identifier)));
+    if (in_method) {
+        if (method.has_captured_syms()) {
+            return fail(fmt::format("local functions with captured symbols are currently not "
+                                    "supported (in definition of function '{}')",
+                                    sir_ctx.get_sym(method.identifier)));
+        }
+    }
 
     bool prev_in_method = in_method;
     in_method           = true;
@@ -229,9 +232,42 @@ SIRNodeId JLLoweringVisitor::visit_MethodDecl(MethodDecl& method) {
 
     in_method = prev_in_method;
 
-    return emplace_decl<sir::FunctionDecl>(&method, method.location, method.identifier,
-                                           method.ret_type, std::move(params), method.qualifiers,
-                                           scoped_body);
+    SIRNodeId lo_func = emplace_decl<sir::FunctionDecl>(&method, method.location, method.identifier,
+                                                        method.ret_type, std::move(params),
+                                                        method.qualifiers, scoped_body);
+
+    // lift local function definitions
+    if (in_method) {
+        if (global_cmpd_body == nullptr) {
+            return internal_error(
+                fmt::format("local function found, but global compound's body has not been "
+                            "initialized yet (in definition of function '{})",
+                            sir_ctx.get_sym(method.identifier)));
+        }
+
+        auto it = global_cmpd_body->begin();
+        if (!global_cmpd_body->empty()) {
+            it =
+                std::find_if(global_cmpd_body->begin(), global_cmpd_body->end(), [&](SIRNodeId id) {
+                    if (sir_ctx.isa<sir::StructDecl>(id) ||
+                        sir_ctx.isa<sir::InterfaceBlockDecl>(id))
+                        return false;
+
+                    sir::FunctionDecl* fn_decl = sir_ctx.get_and_dyn_cast<sir::FunctionDecl>(id);
+
+                    if (fn_decl != nullptr && fn_decl->identifier != sym_main)
+                        return false;
+
+                    return true;
+                });
+        }
+
+        global_cmpd_body->insert(it, lo_func);
+
+        return sir::NodeId::null_id();
+    }
+
+    return lo_func;
 }
 
 SIRNodeId JLLoweringVisitor::visit_FunctionDecl(FunctionDecl& fn) {
@@ -308,17 +344,26 @@ SIRNodeId JLLoweringVisitor::visit_FieldDecl(FieldDecl& field) {
 }
 
 SIRNodeId JLLoweringVisitor::visit_CompoundExpr(CompoundExpr& cmpd) {
+    // # of local fn defs that will be lifted into the global scope
+    static constexpr size_t LOCAL_FN_COUNT_GUESS = 4;
+
     std::vector<SIRNodeId> sir_nodes;
-    sir_nodes.reserve(cmpd.body.size());
+    sir_nodes.reserve(cmpd.body.size() + (first_cmpd ? LOCAL_FN_COUNT_GUESS : 0));
+
+    if (first_cmpd) {
+        global_cmpd_body = &sir_nodes;
+        first_cmpd       = false;
+    }
 
     for (NodeId expr : cmpd.body) {
         SIRNodeId lowered = visit_and_check(expr, true);
 
-        // silent decls in compound expressions are the only exception to null-returning
+        // silent decls and local fns in compound expressions are the only exception to
+        // null-returning
         if (lowered.is_null()) {
             auto* vdecl = ctx.get_and_dyn_cast<VarDecl>(expr);
 
-            if (vdecl == nullptr || !vdecl->is_silent_decl()) {
+            if ((vdecl == nullptr || !vdecl->is_silent_decl()) && !ctx.isa<MethodDecl>(expr)) {
                 internal_error(
                     "unexpected null id returned by a compound expression's subnode in the "
                     "Julia -> SIR lowering visitor.");

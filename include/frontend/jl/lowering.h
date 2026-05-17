@@ -25,8 +25,13 @@ private:
     using SIRNodeId = sir::NodeId;
 
     std::unordered_map<Decl*, SIRNodeId> decl_map{};
-    bool in_method = false;
-    bool _success  = true;
+
+    // inited in first cmpd's visitor (usable in visitors without lifetime issues)
+    std::vector<SIRNodeId>* global_cmpd_body;
+
+    bool first_cmpd = true;
+    bool in_method  = false;
+    bool _success   = true;
 
 public:
     explicit JLLoweringVisitor(JLCtx&& ctx)
@@ -53,6 +58,8 @@ public:
         sym_tilde      = sir_ctx.sym_pool.get_id("~");
         sym_dbl_langle = sir_ctx.sym_pool.get_id("<<");
         sym_dbl_rangle = sir_ctx.sym_pool.get_id(">>");
+
+        sym_main = sir_ctx.sym_pool.get_id("main");
     }
 
     bool pre_visit_ptr(Expr* expr);
@@ -112,6 +119,7 @@ private:
     SymbolId sym_plus, sym_minus, sym_asterisk, sym_slash, sym_div, sym_caret, sym_perc, sym_rem,
         sym_dbl_eq, sym_neq, sym_lt, sym_leq, sym_gt, sym_geq, sym_xor, sym_amper, sym_pipe,
         sym_bang, sym_tilde, sym_dbl_langle, sym_dbl_rangle;
+    SymbolId sym_main;
 };
 
 } // namespace stc::jl
